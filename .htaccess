@@ -1,0 +1,27 @@
+# Disable directory browsing
+Options -Indexes
+
+# Protect files and directories
+<FilesMatch "^\.ht">
+    Order allow,deny
+    Deny from all
+    Satisfy All
+</FilesMatch>
+
+# Protect config files
+<FilesMatch "^(database\.php|api_config\.php)$">
+    Order allow,deny
+    Deny from all
+    Satisfy All
+</FilesMatch>
+
+# PHP settings
+<IfModule mod_php7.c>
+    php_flag display_errors Off
+    php_flag log_errors On
+    php_value error_log /path/to/error.log
+    php_value max_execution_time 60
+    php_value memory_limit 128M
+    php_value post_max_size 20M
+    php_value upload_max_filesize 10M
+</IfModule>
