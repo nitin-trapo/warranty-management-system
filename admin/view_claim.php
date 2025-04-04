@@ -32,7 +32,7 @@ $claimId = (int)$_GET['id'];
 // Get claim details
 $claim = null;
 try {
-    $query = "SELECT c.*, cc.name as category_name 
+    $query = "SELECT c.*, cc.name as category_name, cc.sla_days 
               FROM claims c
               LEFT JOIN claim_categories cc ON c.category_id = cc.id
               WHERE c.id = ?";
@@ -131,6 +131,51 @@ try {
                     <tr>
                         <th>Category:</th>
                         <td><?php echo htmlspecialchars($claim['category_name'] ?? 'N/A'); ?></td>
+                    </tr>
+                    <tr>
+                        <th>SLA Days:</th>
+                        <td><?php echo $claim['sla_days'] ?? 'N/A'; ?></td>
+                    </tr>
+                    <tr>
+                        <th>SLA Status:</th>
+                        <td>
+                            <?php
+                            // Calculate SLA deadline
+                            $createdDate = new DateTime($claim['created_at']);
+                            $slaDays = (int)$claim['sla_days'];
+                            $deadline = clone $createdDate;
+                            $deadline->modify("+{$slaDays} days");
+                            
+                            // Get current date
+                            $currentDate = new DateTime();
+                            
+                            // Check if claim is resolved (approved or rejected)
+                            $isResolved = in_array($claim['status'], ['approved', 'rejected']);
+                            
+                            if ($isResolved) {
+                                echo '<span class="badge bg-success">Resolved</span>';
+                            } else {
+                                // Calculate days remaining
+                                $interval = $currentDate->diff($deadline);
+                                $daysRemaining = $interval->invert ? -$interval->days : $interval->days;
+                                
+                                if ($daysRemaining < 0) {
+                                    // SLA breached
+                                    echo '<span class="badge bg-danger">Breached (' . abs($daysRemaining) . ' days)</span>';
+                                } else if ($daysRemaining == 0) {
+                                    // Due today
+                                    echo '<span class="badge bg-warning">Due Today</span>';
+                                } else {
+                                    // Within SLA
+                                    echo '<span class="badge bg-info">' . $daysRemaining . ' days left</span>';
+                                }
+                            }
+                            ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>SLA Deadline:</th>
+                        <td><?php echo $deadline->format('M d, Y'); ?></td>
                     </tr>
                     <tr>
                         <th>Created At:</th>

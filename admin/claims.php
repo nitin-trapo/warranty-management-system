@@ -433,7 +433,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
 // Get claims from database
 $claims = [];
 $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.description, c.status, 
-                       c.created_at, c.updated_at, cc.name as category_name, c.sku, c.product_type, c.delivery_date
+                       c.sku, c.created_at, c.updated_at, c.created_by, c.category_id,
+                       cc.name as category_name, cc.sla_days 
                 FROM claims c
                 LEFT JOIN claim_categories cc ON c.category_id = cc.id
                 ORDER BY c.id DESC";
@@ -656,8 +657,8 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                         <th>Order ID</th>
                         <th>Customer</th>
                         <th>SKU</th>
-                        <th>Product Type</th>
                         <th>Category</th>
+                        <th>SLA</th>
                         <th>Status</th>
                         <th>Created At</th>
                         <th>Actions</th>
@@ -675,8 +676,44 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                         <td><?php echo htmlspecialchars($claim['order_id']); ?></td>
                         <td><?php echo htmlspecialchars($claim['customer_name']); ?></td>
                         <td><?php echo htmlspecialchars($claim['sku']); ?></td>
-                        <td><?php echo htmlspecialchars($claim['product_type']); ?></td>
                         <td><?php echo htmlspecialchars($claim['category_name'] ?? 'N/A'); ?></td>
+                        <td>
+                            <?php
+                            // Calculate SLA deadline
+                            $createdDate = new DateTime($claim['created_at']);
+                            $slaDays = (int)$claim['sla_days'];
+                            $deadline = clone $createdDate;
+                            $deadline->modify("+{$slaDays} days");
+                            
+                            // Get current date
+                            $currentDate = new DateTime();
+                            
+                            // Check if claim is resolved (approved or rejected)
+                            $isResolved = in_array($claim['status'], ['approved', 'rejected']);
+                            
+                            if ($isResolved) {
+                                echo '<span class="badge bg-success">Resolved</span>';
+                            } else {
+                                // Calculate days remaining
+                                $interval = $currentDate->diff($deadline);
+                                $daysRemaining = $interval->invert ? -$interval->days : $interval->days;
+                                
+                                if ($daysRemaining < 0) {
+                                    // SLA breached
+                                    echo '<span class="badge bg-danger">Breached (' . abs($daysRemaining) . ' days)</span>';
+                                } else if ($daysRemaining == 0) {
+                                    // Due today
+                                    echo '<span class="badge bg-warning">Due Today</span>';
+                                } else {
+                                    // Within SLA
+                                    echo '<span class="badge bg-info">' . $daysRemaining . ' days left</span>';
+                                }
+                                
+                                // Display deadline date
+                                echo '<br><small class="text-muted">Due: ' . $deadline->format('M d, Y') . '</small>';
+                            }
+                            ?>
+                        </td>
                         <td>
                             <span class="badge bg-<?php 
                                 echo match($claim['status']) {

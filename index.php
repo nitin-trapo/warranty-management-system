@@ -7,6 +7,10 @@
 
 // Include required files
 require_once 'config/config.php';
+
+// Ensure timezone is set correctly
+date_default_timezone_set(TIMEZONE);
+
 require_once 'includes/auth_helper.php';
 
 // Check if user is logged in

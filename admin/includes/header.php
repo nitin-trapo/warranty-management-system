@@ -7,6 +7,10 @@
 
 // Include required files
 require_once __DIR__ . '/../../config/config.php';
+
+// Ensure timezone is set correctly
+date_default_timezone_set(TIMEZONE);
+
 require_once __DIR__ . '/../../includes/auth_helper.php';
 require_once __DIR__ . '/../../includes/alert_helper.php';
 
