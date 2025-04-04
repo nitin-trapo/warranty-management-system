@@ -8,6 +8,7 @@
 // Include required files
 require_once __DIR__ . '/../../config/config.php';
 require_once __DIR__ . '/../../includes/auth_helper.php';
+require_once __DIR__ . '/../../includes/alert_helper.php';
 
 // Require admin privileges
 requireAdmin();
@@ -33,6 +34,8 @@ $currentPage = basename($_SERVER['PHP_SELF']);
     
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.2.2/css/buttons.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.2.9/css/responsive.bootstrap5.min.css">
     
     <!-- Custom CSS -->
     <style>
@@ -255,11 +258,6 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             margin-bottom: 1rem;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        
-        .card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
         
         .card-header {
@@ -486,5 +484,10 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             </ul>
         </nav>
         
+        <!-- Alert Container -->
+        <div class="container-fluid mt-3">
+            <?php echo displayAlert(); ?>
+        </div>
+        
         <!-- Page Content -->
-        <div class="page-content">
+        <div class="container-fluid p-3">
