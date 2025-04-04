@@ -1,0 +1,32 @@
+INSTRUCTIONS TO UPDATE CLAIMS.PHP FILE
+
+To add the SKU field to the claim submission process, please make the following changes to your claims.php file:
+
+1. After line 188 (where you get the form data), add this code to get the SKU:
+
+        // Get SKU from the first item (if available)
+        $sku = '';
+        if (isset($_POST['item_sku']) && is_array($_POST['item_sku']) && !empty($_POST['item_sku'][0])) {
+            $sku = trim($_POST['item_sku'][0]);
+        }
+
+2. Update the INSERT query (around line 192) to include the SKU column:
+
+        // Insert claim record
+        $stmt = $conn->prepare("
+            INSERT INTO claims (
+                order_id, customer_name, customer_email, customer_phone, 
+                category_id, sku, description, status
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, 'new'
+            )
+        ");
+
+3. Update the execute statement (around line 200) to include the SKU value:
+
+        $stmt->execute([
+            $orderId, $customerName, $customerEmail, $customerPhone, 
+            $categoryId, $sku, $description
+        ]);
+
+These changes will ensure that the SKU is stored in the claims table when a new claim is submitted.

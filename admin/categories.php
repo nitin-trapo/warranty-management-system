@@ -27,9 +27,14 @@ if (isset($_POST['action']) && $_POST['action'] === 'add_category') {
     try {
         $name = trim($_POST['name']);
         $description = trim($_POST['description']);
+        $slaDays = isset($_POST['sla_days']) ? (int)$_POST['sla_days'] : 7;
         
         if (empty($name)) {
             throw new Exception('Category name is required');
+        }
+        
+        if ($slaDays < 1) {
+            throw new Exception('SLA Days must be at least 1');
         }
         
         // Check if category already exists
@@ -41,8 +46,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'add_category') {
         }
         
         // Insert new category
-        $stmt = $conn->prepare("INSERT INTO claim_categories (name, description) VALUES (?, ?)");
-        $stmt->execute([$name, $description]);
+        $stmt = $conn->prepare("INSERT INTO claim_categories (name, description, sla_days) VALUES (?, ?, ?)");
+        $stmt->execute([$name, $description, $slaDays]);
         
         $successMessage = 'Category added successfully';
     } catch (Exception $e) {
@@ -104,9 +109,14 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit_category') {
         $categoryId = (int)$_POST['category_id'];
         $name = trim($_POST['name']);
         $description = trim($_POST['description']);
+        $slaDays = isset($_POST['sla_days']) ? (int)$_POST['sla_days'] : 7;
         
         if (empty($name)) {
             throw new Exception('Category name is required');
+        }
+        
+        if ($slaDays < 1) {
+            throw new Exception('SLA Days must be at least 1');
         }
         
         // Check if another category with the same name exists
@@ -118,8 +128,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit_category') {
         }
         
         // Update category
-        $stmt = $conn->prepare("UPDATE claim_categories SET name = ?, description = ? WHERE id = ?");
-        $stmt->execute([$name, $description, $categoryId]);
+        $stmt = $conn->prepare("UPDATE claim_categories SET name = ?, description = ?, sla_days = ? WHERE id = ?");
+        $stmt->execute([$name, $description, $slaDays, $categoryId]);
         
         $successMessage = 'Category updated successfully';
     } catch (Exception $e) {
@@ -169,6 +179,7 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <th>ID</th>
                             <th>Name</th>
                             <th>Description</th>
+                            <th>SLA Days</th>
                             <th>Created</th>
                             <th>Actions</th>
                         </tr>
@@ -179,13 +190,15 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td><?php echo $category['id']; ?></td>
                                 <td><?php echo htmlspecialchars($category['name']); ?></td>
                                 <td><?php echo htmlspecialchars($category['description']); ?></td>
+                                <td><?php echo $category['sla_days']; ?></td>
                                 <td><?php echo date('M j, Y, g:i A', strtotime($category['created_at'])); ?></td>
                                 <td>
                                     <div class="btn-group" role="group">
                                         <button type="button" class="btn btn-sm btn-primary edit-category" 
                                                 data-id="<?php echo $category['id']; ?>"
                                                 data-name="<?php echo htmlspecialchars($category['name']); ?>"
-                                                data-description="<?php echo htmlspecialchars($category['description']); ?>">
+                                                data-description="<?php echo htmlspecialchars($category['description']); ?>"
+                                                data-sla-days="<?php echo $category['sla_days']; ?>">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button type="button" class="btn btn-sm btn-danger delete-category"
@@ -226,6 +239,11 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <label for="description" class="form-label fw-bold">Description</label>
                         <textarea class="form-control" id="description" name="description" rows="3"></textarea>
                     </div>
+                    
+                    <div class="mb-3">
+                        <label for="sla_days" class="form-label fw-bold">SLA Days</label>
+                        <input type="number" class="form-control" id="sla_days" name="sla_days" required>
+                    </div>
                 </div>
                 
                 <div class="modal-footer">
@@ -259,6 +277,11 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <div class="mb-3">
                         <label for="edit_description" class="form-label fw-bold">Description</label>
                         <textarea class="form-control" id="edit_description" name="description" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit_sla_days" class="form-label fw-bold">SLA Days</label>
+                        <input type="number" class="form-control" id="edit_sla_days" name="sla_days" required>
                     </div>
                 </div>
                 
@@ -312,10 +335,12 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
             const categoryId = $(this).data('id');
             const categoryName = $(this).data('name');
             const categoryDescription = $(this).data('description');
+            const categorySlaDays = $(this).data('sla-days');
             
             $('#edit_category_id').val(categoryId);
             $('#edit_name').val(categoryName);
             $('#edit_description').val(categoryDescription);
+            $('#edit_sla_days').val(categorySlaDays);
             
             $('#editCategoryModal').modal('show');
         });

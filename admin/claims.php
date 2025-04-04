@@ -77,10 +77,14 @@ try {
                 `customer_email` varchar(100) NOT NULL,
                 `customer_phone` varchar(20) DEFAULT NULL,
                 `category_id` int(11) NOT NULL,
+                `sku` varchar(50) NOT NULL,
+                `product_type` varchar(50) NOT NULL,
+                `delivery_date` date NOT NULL,
                 `description` text NOT NULL,
                 `status` enum('new','in_progress','on_hold','approved','rejected') NOT NULL DEFAULT 'new',
                 `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                 `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
+                `created_by` int(11) NOT NULL,
                 PRIMARY KEY (`id`),
                 KEY `category_id` (`category_id`),
                 CONSTRAINT `claims_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `claim_categories` (`id`) ON DELETE CASCADE
@@ -139,6 +143,33 @@ try {
         $conn->exec($createTableSQL);
     }
     
+    // Check if claim_notes table exists
+    $tableExists = false;
+    $stmt = $conn->query("SHOW TABLES LIKE 'claim_notes'");
+    if ($stmt->rowCount() > 0) {
+        $tableExists = true;
+    }
+    
+    // Create claim_notes table if it doesn't exist
+    if (!$tableExists) {
+        $createTableSQL = "
+            CREATE TABLE `claim_notes` (
+                `id` int(11) NOT NULL AUTO_INCREMENT,
+                `claim_id` int(11) NOT NULL,
+                `note` text NOT NULL,
+                `status_changed` enum('yes','no') NOT NULL DEFAULT 'no',
+                `old_status` varchar(50) DEFAULT NULL,
+                `new_status` varchar(50) DEFAULT NULL,
+                `created_by` int(11) NOT NULL,
+                `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (`id`),
+                KEY `claim_id` (`claim_id`),
+                CONSTRAINT `claim_notes_ibfk_1` FOREIGN KEY (`claim_id`) REFERENCES `claims` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ";
+        $conn->exec($createTableSQL);
+    }
+    
     // Create uploads directory if it doesn't exist
     $uploadsDir = '../uploads/claims';
     if (!file_exists($uploadsDir)) {
@@ -187,20 +218,37 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
         $categoryId = (int)$_POST['category_id'];
         $description = trim($_POST['description']);
         $userId = $_SESSION['user_id'];
+        $deliveryDate = isset($_POST['delivery_date']) ? trim($_POST['delivery_date']) : date('Y-m-d');
+        
+        // Get SKU from the first item (if available)
+        $sku = '';
+        $productType = '';
+        if (isset($_POST['item_sku']) && is_array($_POST['item_sku']) && !empty($_POST['item_sku'][0])) {
+            $sku = trim($_POST['item_sku'][0]);
+            $productType = isset($_POST['item_product_type'][0]) ? trim($_POST['item_product_type'][0]) : '';
+        }
+        
+        // Check if a claim already exists for this order ID and SKU
+        $stmt = $conn->prepare("SELECT id FROM claims WHERE order_id = ? AND sku = ?");
+        $stmt->execute([$orderId, $sku]);
+        
+        if ($stmt->rowCount() > 0) {
+            throw new Exception("A claim for this order and product already exists. Please check existing claims.");
+        }
         
         // Insert claim record
         $stmt = $conn->prepare("
             INSERT INTO claims (
                 order_id, customer_name, customer_email, customer_phone, 
-                category_id, description, status
+                category_id, sku, product_type, delivery_date, description, status, created_by
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, 'new'
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?
             )
         ");
         
         $stmt->execute([
             $orderId, $customerName, $customerEmail, $customerPhone, 
-            $categoryId, $description
+            $categoryId, $sku, $productType, $deliveryDate, $description, $userId
         ]);
         
         $claimId = $conn->lastInsertId();
@@ -244,6 +292,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
             ");
             
             $fileCount = count($_FILES['photos']['name']);
+            $maxPhotoSize = 2 * 1024 * 1024; // 2MB in bytes
+            $photoErrors = [];
             
             for ($i = 0; $i < $fileCount; $i++) {
                 if ($_FILES['photos']['error'][$i] === UPLOAD_ERR_OK) {
@@ -251,6 +301,12 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
                     $originalName = $_FILES['photos']['name'][$i];
                     $fileSize = $_FILES['photos']['size'][$i];
                     $fileType = $_FILES['photos']['type'][$i];
+                    
+                    // Check file size
+                    if ($fileSize > $maxPhotoSize) {
+                        $photoErrors[] = "Photo '$originalName' exceeds the maximum size limit of 2MB.";
+                        continue;
+                    }
                     
                     // Generate a unique filename
                     $extension = pathinfo($originalName, PATHINFO_EXTENSION);
@@ -266,6 +322,10 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
                         ]);
                     }
                 }
+            }
+            
+            if (!empty($photoErrors)) {
+                throw new Exception(implode('<br>', $photoErrors));
             }
         }
         
@@ -287,6 +347,10 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
             ");
             
             $fileCount = count($_FILES['videos']['name']);
+            $maxVideoSize = 10 * 1024 * 1024; // 10MB in bytes
+            $allowedVideoTypes = ['video/mp4', 'video/quicktime']; // MP4 and MOV formats
+            $allowedVideoExtensions = ['mp4', 'mov'];
+            $videoErrors = [];
             
             for ($i = 0; $i < $fileCount; $i++) {
                 if ($_FILES['videos']['error'][$i] === UPLOAD_ERR_OK) {
@@ -295,8 +359,26 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
                     $fileSize = $_FILES['videos']['size'][$i];
                     $fileType = $_FILES['videos']['type'][$i];
                     
-                    // Generate a unique filename
+                    // Check file size
+                    if ($fileSize > $maxVideoSize) {
+                        $videoErrors[] = "Video '$originalName' exceeds the maximum size limit of 10MB.";
+                        continue;
+                    }
+                    
+                    // Check file type
+                    if (!in_array($fileType, $allowedVideoTypes)) {
+                        $videoErrors[] = "Video '$originalName' is not in an allowed format (MP4 or MOV).";
+                        continue;
+                    }
+                    
+                    // Check file extension
                     $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+                    if (!in_array($extension, $allowedVideoExtensions)) {
+                        $videoErrors[] = "Video '$originalName' is not in an allowed format (MP4 or MOV).";
+                        continue;
+                    }
+                    
+                    // Generate a unique filename
                     $newFileName = uniqid('video_') . '.' . $extension;
                     $filePath = $uploadDir . $newFileName;
                     
@@ -309,6 +391,10 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
                         ]);
                     }
                 }
+            }
+            
+            if (!empty($videoErrors)) {
+                throw new Exception(implode('<br>', $videoErrors));
             }
         }
         
@@ -335,13 +421,19 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
         
         // Set error message
         $errorMessage = "Database error: " . $e->getMessage();
+    } catch (Exception $e) {
+        // Log error
+        error_log("Error creating claim: " . $e->getMessage());
+        
+        // Set error message
+        $errorMessage = $e->getMessage();
     }
 }
 
 // Get claims from database
 $claims = [];
 $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.description, c.status, 
-                       c.created_at, cc.name as category_name
+                       c.created_at, c.updated_at, cc.name as category_name, c.sku, c.product_type, c.delivery_date
                 FROM claims c
                 LEFT JOIN claim_categories cc ON c.category_id = cc.id
                 ORDER BY c.id DESC";
@@ -563,6 +655,8 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                         <th>Claim ID</th>
                         <th>Order ID</th>
                         <th>Customer</th>
+                        <th>SKU</th>
+                        <th>Product Type</th>
                         <th>Category</th>
                         <th>Status</th>
                         <th>Created At</th>
@@ -572,14 +666,16 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                 <tbody>
                     <?php if (empty($claims)): ?>
                     <tr>
-                        <td colspan="7" class="text-center py-3">No claims found.</td>
+                        <td colspan="9" class="text-center py-3">No claims found.</td>
                     </tr>
                     <?php else: ?>
                     <?php foreach ($claims as $claim): ?>
-                    <tr>
+                    <tr data-claim-id="<?php echo $claim['id']; ?>">
                         <td>#<?php echo $claim['id']; ?></td>
                         <td><?php echo htmlspecialchars($claim['order_id']); ?></td>
                         <td><?php echo htmlspecialchars($claim['customer_name']); ?></td>
+                        <td><?php echo htmlspecialchars($claim['sku']); ?></td>
+                        <td><?php echo htmlspecialchars($claim['product_type']); ?></td>
                         <td><?php echo htmlspecialchars($claim['category_name'] ?? 'N/A'); ?></td>
                         <td>
                             <span class="badge bg-<?php 
@@ -595,16 +691,26 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                                 <?php echo ucfirst(str_replace('_', ' ', $claim['status'])); ?>
                             </span>
                         </td>
-                        <td><?php echo date('M d, Y', strtotime($claim['created_at'])); ?></td>
+                        <td><?php echo date('M d, Y h:i A', strtotime($claim['created_at'])); ?></td>
                         <td>
                             <div class="btn-group btn-group-sm">
-                                <a href="view_claim.php?id=<?php echo $claim['id']; ?>" class="btn btn-outline-primary">
+                                <a href="view_claim.php?id=<?php echo $claim['id']; ?>" class="btn btn-outline-primary" title="View Claim">
                                     <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="edit_claim.php?id=<?php echo $claim['id']; ?>" class="btn btn-outline-secondary" title="Edit Claim">
+                                    <i class="fas fa-edit"></i>
                                 </a>
                                 <button type="button" class="btn btn-outline-secondary update-status" 
                                         data-id="<?php echo $claim['id']; ?>"
-                                        data-status="<?php echo $claim['status']; ?>">
-                                    <i class="fas fa-edit"></i>
+                                        data-status="<?php echo $claim['status']; ?>"
+                                        title="Update Status">
+                                    <i class="fas fa-tasks"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-danger delete-claim" 
+                                        data-id="<?php echo $claim['id']; ?>"
+                                        data-order="<?php echo htmlspecialchars($claim['order_id']); ?>"
+                                        title="Delete Claim">
+                                    <i class="fas fa-trash"></i>
                                 </button>
                             </div>
                         </td>
@@ -669,19 +775,34 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     <h6 class="border-bottom pb-2 mb-3">Customer Information</h6>
                     <div class="row mb-4">
                         <div class="col-md-4 mb-3">
-                            <label class="form-label fw-bold">Customer Name</label>
+                            <label class="form-label fw-bold">Customer Name (Display Only)</label>
                             <p class="form-control-static" id="customer_name_display"></p>
-                            <input type="hidden" name="customer_name" id="customer_name">
                         </div>
                         <div class="col-md-4 mb-3">
-                            <label class="form-label fw-bold">Email Address</label>
+                            <label class="form-label fw-bold">Email Address (Display Only)</label>
                             <p class="form-control-static" id="customer_email_display"></p>
-                            <input type="hidden" name="customer_email" id="customer_email">
                         </div>
                         <div class="col-md-4 mb-3">
-                            <label class="form-label fw-bold">Phone Number</label>
+                            <label class="form-label fw-bold">Phone Number (Display Only)</label>
                             <p class="form-control-static" id="customer_phone_display"></p>
-                            <input type="hidden" name="customer_phone" id="customer_phone">
+                        </div>
+                    </div>
+                    
+                    <!-- Customer Information Input Fields -->
+                    <div class="row mb-4">
+                        <div class="col-md-4 mb-3">
+                            <label for="customer_name_input" class="form-label fw-bold">Customer Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="customer_name" id="customer_name_input" placeholder="Enter customer name" required>
+                            <div class="invalid-feedback">Customer name is required.</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="customer_email_input" class="form-label fw-bold">Email Address <span class="text-danger">*</span></label>
+                            <input type="email" class="form-control" name="customer_email" id="customer_email_input" placeholder="Enter customer email" required>
+                            <div class="invalid-feedback">Customer email is required.</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="customer_phone_input" class="form-label fw-bold">Phone Number</label>
+                            <input type="text" class="form-control" name="customer_phone" id="customer_phone_input" placeholder="Enter customer phone">
                         </div>
                     </div>
                     
@@ -697,9 +818,13 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                 
                     <!-- Claim Form -->
                     <div id="claim_form_container">
-                        <form method="POST" action="" id="claimForm" enctype="multipart/form-data">
+                        <!-- Error Container -->
+                        <div id="error_container" class="mb-4" style="display:none;"></div>
+                        
+                        <form method="POST" action="claims.php" id="claimForm" enctype="multipart/form-data" class="needs-validation" novalidate>
                             <input type="hidden" name="action" value="submit_claim">
                             <input type="hidden" name="order_id" id="claim_order_id">
+                            <?php include 'includes/claim_form_fields.php'; ?>
                             
                             <!-- Claim Details -->
                             <h6 class="border-bottom pb-2 mb-3">Claim Details</h6>
@@ -724,16 +849,24 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                             
                             <!-- Media Upload Section -->
                             <h6 class="border-bottom pb-2 mb-3">Supporting Media</h6>
+                            
+                            <!-- File Upload Errors Container -->
+                            <div id="file-upload-errors" class="alert alert-danger mb-3" style="display:none;"></div>
+                            
                             <div class="row mb-4">
                                 <div class="col-md-6 mb-3">
                                     <label for="photos" class="form-label fw-bold">Upload Photos</label>
                                     <input type="file" class="form-control" id="photos" name="photos[]" multiple accept="image/*">
-                                    <div class="form-text">You can select multiple photos (JPG, PNG, etc.)</div>
+                                    <div class="form-text">
+                                        <i class="fas fa-info-circle text-primary me-1"></i> Max size: <strong>2MB</strong> per image. Supported formats: JPG, PNG, GIF.
+                                    </div>
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="videos" class="form-label fw-bold">Upload Videos</label>
-                                    <input type="file" class="form-control" id="videos" name="videos[]" multiple accept="video/*">
-                                    <div class="form-text">You can select multiple videos (MP4, MOV, etc.)</div>
+                                    <input type="file" class="form-control" id="videos" name="videos[]" multiple accept="video/mp4,video/quicktime">
+                                    <div class="form-text">
+                                        <i class="fas fa-info-circle text-primary me-1"></i> Max size: <strong>10MB</strong> per video. Supported formats: <strong>MP4, MOV only</strong>.
+                                    </div>
                                 </div>
                                 <div class="col-12">
                                     <div class="form-text text-muted">
@@ -758,14 +891,12 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
 <div class="modal fade" id="updateStatusModal" tabindex="-1" aria-labelledby="updateStatusModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="" id="updateStatusForm">
-                <input type="hidden" name="action" value="update_status">
-                <input type="hidden" name="claim_id" id="status_claim_id">
-                
-                <div class="modal-header">
-                    <h5 class="modal-title" id="updateStatusModalLabel">Update Claim Status</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
+            <div class="modal-header">
+                <h5 class="modal-title" id="updateStatusModalLabel">Update Claim Status</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="updateStatusForm">
+                <input type="hidden" name="claim_id" id="status_claim_id" value="">
                 
                 <div class="modal-body">
                     <div class="mb-3">
@@ -778,19 +909,41 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                             <option value="rejected">Rejected</option>
                         </select>
                     </div>
-                    
                     <div class="mb-3">
-                        <label for="status_note" class="form-label">Note</label>
-                        <textarea class="form-control" id="status_note" name="note" rows="3" 
-                                  placeholder="Add a note about this status change (optional)"></textarea>
+                        <label for="status_note" class="form-label">Note (Optional)</label>
+                        <textarea class="form-control" id="status_note" name="note" rows="3" placeholder="Add a note about this status change..."></textarea>
+                        <div class="form-text">If left empty, a default note about the status change will be added.</div>
                     </div>
                 </div>
                 
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Update Status</button>
+                    <button type="button" class="btn btn-primary update-status-btn">Update Status</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Claim Modal -->
+<div class="modal fade" id="deleteClaimModal" tabindex="-1" aria-labelledby="deleteClaimModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteClaimModalLabel">Delete Claim</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this claim? This action cannot be undone.</p>
+                <p><strong>Claim Details:</strong></p>
+                <ul>
+                    <li>Order ID: <span id="delete_order_id"></span></li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <a href="#" id="confirmDeleteBtn" class="btn btn-danger">Delete Claim</a>
+            </div>
         </div>
     </div>
 </div>
@@ -798,150 +951,227 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
 <!-- Include footer -->
 <?php require_once 'includes/footer.php'; ?>
 
+<!-- Include claim submission script -->
+<script src="js/claim-submission.js"></script>
+<script src="js/file-validation.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('DOM Content Loaded');
+    // Set this to true to enable AJAX form submission
+    window.useAjaxSubmission = true;
+</script>
+
+<!-- Initialize DataTable -->
+<script>
+    $(document).ready(function() {
+        $('#claimsTable').DataTable({
+            responsive: true,
+            stateSave: true,
+            "columnDefs": [
+                { "orderable": false, "targets": -1 } // Disable sorting on action column
+            ],
+            "order": [[ 0, "desc" ]], // Sort by ID descending by default
+            "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
+            "language": {
+                "lengthMenu": "Show _MENU_ claims per page",
+                "zeroRecords": "No claims found",
+                "info": "Showing page _PAGE_ of _PAGES_",
+                "infoEmpty": "No claims available",
+                "infoFiltered": "(filtered from _MAX_ total claims)"
+            }
+        });
         
-        // Get elements
-        const lookupButton = document.getElementById('lookupOrderBtn');
-        const lookupBtnText = document.getElementById('lookupBtnText');
-        const errorDiv = document.getElementById('orderLookupError');
-        const orderDetailsDiv = document.getElementById('orderDetailsDiv');
-        const changeOrderBtn = document.getElementById('changeOrderBtn');
+        // Update status modal
+        $('.update-status').on('click', function() {
+            const claimId = $(this).data('id');
+            const status = $(this).data('status');
+            
+            // Set values in the form
+            $('#status_claim_id').val(claimId);
+            $('#claim_status').val(status);
+            
+            console.log("Opening modal for claim ID:", claimId, "with status:", status);
+            console.log("Form values set:", {
+                claim_id: $('#status_claim_id').val(),
+                status: $('#claim_status').val()
+            });
+            
+            $('#updateStatusModal').modal('show');
+        });
         
-        // Order lookup
-        if (lookupButton) {
-            console.log('Adding event listener to lookup button');
-            lookupButton.addEventListener('click', function() {
-                console.log('Lookup button clicked');
-                const orderId = document.getElementById('order_id_lookup').value.trim();
-                
-                if (!orderId) {
-                    errorDiv.style.display = 'block';
-                    errorDiv.textContent = 'Please enter an order ID';
-                    return;
-                }
-                
-                // Disable button and show loading
-                lookupButton.disabled = true;
-                lookupBtnText.textContent = "Loading...";
-                errorDiv.style.display = 'none';
-                
-                console.log('Making AJAX request to:', 'ajax/order_lookup.php');
-                
-                // Make AJAX request
-                fetch('ajax/order_lookup.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: JSON.stringify({ order_id: orderId })
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('AJAX response:', data);
+        // Delete claim modal
+        $('.delete-claim').on('click', function() {
+            const claimId = $(this).data('id');
+            const orderId = $(this).data('order');
+            
+            $('#delete_order_id').text(orderId);
+            $('#confirmDeleteBtn').attr('href', 'delete_claim.php?id=' + claimId);
+            
+            $('#deleteClaimModal').modal('show');
+        });
+        
+        // Display session messages
+        <?php if (isset($_SESSION['success_message'])): ?>
+            showAlert('success', '<?php echo addslashes($_SESSION['success_message']); ?>');
+            <?php unset($_SESSION['success_message']); ?>
+        <?php endif; ?>
+        
+        <?php if (isset($_SESSION['error_message'])): ?>
+            showAlert('danger', '<?php echo addslashes($_SESSION['error_message']); ?>');
+            <?php unset($_SESSION['error_message']); ?>
+        <?php endif; ?>
+        
+        // Function to show alert
+        function showAlert(type, message) {
+            const alertHtml = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            $('.page-title').after(alertHtml);
+            
+            // Auto dismiss after 5 seconds
+            setTimeout(function() {
+                $('.alert').alert('close');
+            }, 5000);
+        }
+        
+        // Handle update status button click
+        $('.update-status-btn').on('click', function() {
+            updateClaimStatus();
+        });
+        
+        // Function to update claim status
+        function updateClaimStatus() {
+            const modal = $('#updateStatusModal');
+            const claimId = $('#status_claim_id').val();
+            const status = $('#claim_status').val();
+            const note = $('#status_note').val();
+            
+            // Create FormData object
+            const formData = new FormData();
+            formData.append('claim_id', claimId);
+            formData.append('status', status);
+            formData.append('note', note);
+            
+            // Log the data for debugging
+            console.log("Claim ID:", claimId);
+            console.log("Status:", status);
+            console.log("Note:", note);
+            
+            // Show loading state
+            const submitBtn = modal.find('.update-status-btn');
+            const originalBtnText = submitBtn.html();
+            submitBtn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Updating...');
+            submitBtn.prop('disabled', true);
+            
+            // Make sure we have a claim ID
+            if (!claimId) {
+                showAlert('danger', 'No claim ID provided. Please try again.');
+                submitBtn.html(originalBtnText);
+                submitBtn.prop('disabled', false);
+                return;
+            }
+            
+            $.ajax({
+                url: 'ajax/update_claim_status_ajax.php',
+                type: 'POST',
+                data: {
+                    claim_id: claimId,
+                    status: status,
+                    note: note
+                },
+                traditional: true,
+                dataType: 'json',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                success: function(response) {
+                    console.log("Success Response:", response);
                     
-                    // Reset button text
-                    lookupButton.disabled = false;
-                    lookupBtnText.textContent = "Lookup";
+                    // Hide modal
+                    modal.modal('hide');
                     
-                    if (data.success) {
-                        // Display order details
-                        orderDetailsDiv.style.display = 'block';
+                    // Reset form
+                    $('#updateStatusForm')[0].reset();
+                    
+                    if (response.success) {
+                        // Update status in the table
+                        const newStatus = response.status;
+                        updateStatusInTable(claimId, newStatus);
                         
-                        // Fill in order details
-                        document.getElementById('order_id_display').textContent = data.order.order_id;
-                        document.getElementById('customer_name_display').textContent = data.order.customer_name;
-                        document.getElementById('customer_email_display').textContent = data.order.customer_email;
-                        document.getElementById('customer_phone_display').textContent = data.order.customer_phone;
-                        document.getElementById('order_date').textContent = data.order.order_date_display || data.order.order_date;
-                        
-                        // Set hidden input values
-                        document.getElementById('claim_order_id').value = data.order.order_id;
-                        document.getElementById('customer_name').value = data.order.customer_name;
-                        document.getElementById('customer_email').value = data.order.customer_email;
-                        document.getElementById('customer_phone').value = data.order.customer_phone;
-                        
-                        // Hide lookup section
-                        document.getElementById('orderLookupSection').style.display = 'none';
-                        
-                        // Display item selection
-                        const itemSelectionDiv = document.getElementById('item_selection');
-                        itemSelectionDiv.innerHTML = data.items_html;
-                        
-                        // Add event listeners to checkboxes
-                        const checkboxes = document.querySelectorAll('.item-checkbox');
-                        checkboxes.forEach(checkbox => {
-                            checkbox.addEventListener('change', function() {
-                                validateItemSelection();
-                            });
-                        });
+                        // Show success message
+                        showAlert('success', response.message);
                     } else {
-                        // Display error message
-                        errorDiv.style.display = 'block';
-                        errorDiv.textContent = data.message || 'An error occurred while fetching order details. Please try again.';
-                        
-                        // Hide order details
-                        orderDetailsDiv.style.display = 'none';
+                        // Show error message
+                        showAlert('danger', response.message || 'An error occurred while updating the status.');
                     }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
+                },
+                error: function(xhr, status, error) {
+                    console.error("AJAX Error:", status, error);
+                    console.log("Response Text:", xhr.responseText);
                     
-                    // Reset button text
-                    lookupButton.disabled = false;
-                    lookupBtnText.textContent = "Lookup";
-                    
-                    // Display error message
-                    errorDiv.style.display = 'block';
-                    errorDiv.textContent = 'An error occurred while fetching order details. Please try again.';
-                    
-                    // Hide order details
-                    orderDetailsDiv.style.display = 'none';
-                });
-            });
-        }
-        
-        // Change Order button
-        if (changeOrderBtn) {
-            changeOrderBtn.addEventListener('click', function() {
-                // Show lookup section
-                document.getElementById('orderLookupSection').style.display = 'block';
-                
-                // Hide order details
-                orderDetailsDiv.style.display = 'none';
-                
-                // Hide claim form
-                document.getElementById('claim_form_container').style.display = 'none';
-            });
-        }
-        
-        // Form submission
-        const claimForm = document.getElementById('claimForm');
-        if (claimForm) {
-            claimForm.addEventListener('submit', function(e) {
-                // Validate that at least one item is selected
-                if (!validateItemSelection()) {
-                    e.preventDefault();
-                    document.getElementById('noItemsWarning').style.display = 'block';
-                    return false;
+                    try {
+                        // Try to parse the response as JSON
+                        const errorResponse = JSON.parse(xhr.responseText);
+                        showAlert('danger', errorResponse.message || 'An error occurred while updating the status.');
+                    } catch (e) {
+                        // If parsing fails, show a generic error
+                        showAlert('danger', 'An error occurred while updating the status. Please try again.');
+                    }
+                },
+                complete: function() {
+                    // Reset button state
+                    submitBtn.html(originalBtnText);
+                    submitBtn.prop('disabled', false);
                 }
-                
-                document.getElementById('noItemsWarning').style.display = 'none';
-                return true;
             });
         }
         
-        // Validate that at least one item is selected
-        function validateItemSelection() {
-            const checkboxes = document.querySelectorAll('.item-checkbox:checked');
-            return checkboxes.length > 0;
+        // Function to update status in the table
+        function updateStatusInTable(claimId, newStatus) {
+            const statusText = getStatusText(newStatus);
+            const statusClass = getStatusClass(newStatus);
+            
+            // Find the row with the claim ID
+            const row = $(`tr[data-claim-id="${claimId}"]`);
+            if (row.length) {
+                // Update the status badge
+                const statusCell = row.find('td:nth-child(7)'); // Status is in the 7th column (index 7)
+                statusCell.html(`<span class="badge ${statusClass}">${statusText}</span>`);
+                
+                // Update the data attribute for the update status button
+                row.find('.update-status').data('status', newStatus);
+                
+                console.log("Updated status for claim ID:", claimId, "to:", newStatus);
+                console.log("Status cell:", statusCell);
+            } else {
+                console.error("Could not find row with claim ID:", claimId);
+            }
+        }
+        
+        // Function to get status text
+        function getStatusText(status) {
+            switch (status) {
+                case 'new': return 'New';
+                case 'in_progress': return 'In Progress';
+                case 'on_hold': return 'On Hold';
+                case 'approved': return 'Approved';
+                case 'rejected': return 'Rejected';
+                default: return 'Unknown';
+            }
+        }
+        
+        // Function to get status badge class
+        function getStatusClass(status) {
+            switch (status) {
+                case 'new': return 'bg-primary';
+                case 'in_progress': return 'bg-info';
+                case 'on_hold': return 'bg-warning';
+                case 'approved': return 'bg-success';
+                case 'rejected': return 'bg-danger';
+                default: return 'bg-secondary';
+            }
         }
     });
 </script>
