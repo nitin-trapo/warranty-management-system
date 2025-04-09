@@ -84,13 +84,12 @@ try {
             $itemsHtml .= '<div class="card h-100 shadow-sm ' . $borderClass . '" style="border-width: 1px;">';
             $itemsHtml .= '<div class="card-body py-3 px-3">';
             
-            // Radio button and title in one row
+            // Checkbox and title in one row
             $itemsHtml .= '<div class="d-flex align-items-center mb-2">';
-            $itemsHtml .= '<div class="custom-control custom-radio mr-3">';
-            $itemsHtml .= '<input type="radio" class="custom-control-input" name="claim_items" value="' . $index . '" id="item_' . $index . '" ' . $disabled . '>';
-            $itemsHtml .= '<label class="custom-control-label" for="item_' . $index . '"></label>';
+            $itemsHtml .= '<div class="form-check">';
+            $itemsHtml .= '<input type="checkbox" class="form-check-input item-checkbox" name="claim_items[]" value="' . $index . '" id="item_' . $index . '" ' . $disabled . ' data-sku="' . htmlspecialchars($item['sku']) . '" data-product-name="' . htmlspecialchars($item['product_name']) . '" data-product-type="' . htmlspecialchars($item['product_type']) . '" onchange="if(typeof updateSelectedItems === \'function\') updateSelectedItems();">';
+            $itemsHtml .= '<label class="form-check-label" for="item_' . $index . '">' . htmlspecialchars($item['product_name']) . '</label>';
             $itemsHtml .= '</div>';
-            $itemsHtml .= '<label for="item_' . $index . '" class="mb-0 text-truncate font-weight-bold pl-2 cursor-pointer" style="max-width: 85%; cursor: pointer;padding-left: 5px;font-weight:700" title="' . htmlspecialchars($item['product_name']) . '">' . htmlspecialchars($item['product_name']) . '</label>';
             $itemsHtml .= '</div>';
             
             // Item details
@@ -123,7 +122,7 @@ try {
         
         // Small note at the bottom
         $itemsHtml .= '<div class="text-muted small mt-2 mb-3">';
-        $itemsHtml .= '<i class="fa fa-info-circle"></i> Please select one item for warranty claim processing.';
+        $itemsHtml .= '<i class="fa fa-info-circle"></i> Please select one or more items for warranty claim processing.';
         $itemsHtml .= '</div>';
     }
     

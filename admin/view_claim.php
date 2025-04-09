@@ -32,10 +32,7 @@ $claimId = (int)$_GET['id'];
 // Get claim details
 $claim = null;
 try {
-    $query = "SELECT c.*, cc.name as category_name, cc.sla_days 
-              FROM claims c
-              LEFT JOIN claim_categories cc ON c.category_id = cc.id
-              WHERE c.id = ?";
+    $query = "SELECT c.* FROM claims c WHERE c.id = ?";
     $stmt = $conn->prepare($query);
     $stmt->execute([$claimId]);
     $claim = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -46,17 +43,25 @@ try {
         exit;
     }
     
-    // Get claim media
-    $mediaQuery = "SELECT * FROM claim_media WHERE claim_id = ? ORDER BY file_type, created_at";
-    $stmt = $conn->prepare($mediaQuery);
-    $stmt->execute([$claimId]);
-    $media = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Get claim items
-    $itemsQuery = "SELECT * FROM claim_items WHERE claim_id = ? ORDER BY id";
+    // Get claim items with category information
+    $itemsQuery = "SELECT ci.*, cc.name as category_name, cc.sla_days 
+                  FROM claim_items ci
+                  LEFT JOIN claim_categories cc ON ci.category_id = cc.id
+                  WHERE ci.claim_id = ? 
+                  ORDER BY ci.id";
     $stmt = $conn->prepare($itemsQuery);
     $stmt->execute([$claimId]);
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Get claim media with item association
+    $mediaQuery = "SELECT cm.*, ci.sku 
+                  FROM claim_media cm
+                  LEFT JOIN claim_items ci ON cm.claim_item_id = ci.id
+                  WHERE cm.claim_id = ? 
+                  ORDER BY cm.file_type, cm.created_at";
+    $stmt = $conn->prepare($mediaQuery);
+    $stmt->execute([$claimId]);
+    $media = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Get claim notes
     $notesQuery = "SELECT cn.*, u.username as created_by_name 
@@ -78,7 +83,13 @@ try {
 ?>
 
 <div class="page-title">
-    <h1>View Claim #<?php echo $claimId; ?></h1>
+    <h1>
+        <?php if (!empty($claim['claim_number'])): ?>
+            View Claim <span class="badge bg-info"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
+        <?php else: ?>
+            View Claim #<?php echo $claimId; ?>
+        <?php endif; ?>
+    </h1>
     <div class="button-container">
         <a href="edit_claim.php?id=<?php echo $claimId; ?>" class="btn btn-primary">
             <i class="fas fa-edit me-1"></i> Edit Claim
@@ -109,7 +120,13 @@ try {
                 <table class="table table-borderless">
                     <tr>
                         <th style="width: 30%">Claim ID:</th>
-                        <td>#<?php echo $claim['id']; ?></td>
+                        <td>
+                            <?php if (!empty($claim['claim_number'])): ?>
+                                <span class="badge bg-info"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
+                            <?php else: ?>
+                                #<?php echo $claim['id']; ?>
+                            <?php endif; ?>
+                        </td>
                     </tr>
                     <tr>
                         <th>Status:</th>
@@ -128,21 +145,32 @@ try {
                             </span>
                         </td>
                     </tr>
-                    <tr>
-                        <th>Category:</th>
-                        <td><?php echo htmlspecialchars($claim['category_name'] ?? 'N/A'); ?></td>
-                    </tr>
+                    <?php if (!empty($items)): ?>
                     <tr>
                         <th>SLA Days:</th>
-                        <td><?php echo $claim['sla_days'] ?? 'N/A'; ?></td>
+                        <td>
+                            <?php 
+                            // Get unique SLA days from items
+                            $slaDays = array_unique(array_column($items, 'sla_days'));
+                            echo implode(', ', array_filter($slaDays)) ?: 'N/A'; 
+                            ?>
+                        </td>
                     </tr>
                     <tr>
                         <th>SLA Status:</th>
                         <td>
                             <?php
+                            // Calculate SLA deadline based on first item with SLA days
+                            $slaDays = 0;
+                            foreach ($items as $item) {
+                                if (!empty($item['sla_days'])) {
+                                    $slaDays = (int)$item['sla_days'];
+                                    break;
+                                }
+                            }
+                            
                             // Calculate SLA deadline
                             $createdDate = new DateTime($claim['created_at']);
-                            $slaDays = (int)$claim['sla_days'];
                             $deadline = clone $createdDate;
                             $deadline->modify("+{$slaDays} days");
                             
@@ -177,6 +205,7 @@ try {
                         <th>SLA Deadline:</th>
                         <td><?php echo $deadline->format('M d, Y'); ?></td>
                     </tr>
+                    <?php endif; ?>
                     <tr>
                         <th>Created At:</th>
                         <td><?php echo date('M d, Y h:i A', strtotime($claim['created_at'])); ?></td>
@@ -193,14 +222,6 @@ try {
                     <tr>
                         <th style="width: 30%">Order ID:</th>
                         <td><?php echo htmlspecialchars($claim['order_id']); ?></td>
-                    </tr>
-                    <tr>
-                        <th>SKU:</th>
-                        <td><?php echo htmlspecialchars($claim['sku']); ?></td>
-                    </tr>
-                    <tr>
-                        <th>Product Type:</th>
-                        <td><?php echo htmlspecialchars($claim['product_type']); ?></td>
                     </tr>
                     <tr>
                         <th>Delivery Date:</th>
@@ -247,6 +268,9 @@ try {
                                 <th>#</th>
                                 <th>SKU</th>
                                 <th>Product Name</th>
+                                <th>Product Type</th>
+                                <th>Category</th>
+                                <th>Description</th>
                                 <th>Added On</th>
                             </tr>
                         </thead>
@@ -256,6 +280,23 @@ try {
                                 <td><?php echo $index + 1; ?></td>
                                 <td><?php echo htmlspecialchars($item['sku']); ?></td>
                                 <td><?php echo htmlspecialchars($item['product_name']); ?></td>
+                                <td><?php echo htmlspecialchars($item['product_type'] ?? 'N/A'); ?></td>
+                                <td>
+                                    <?php if (!empty($item['category_name'])): ?>
+                                        <span class="badge bg-secondary"><?php echo htmlspecialchars($item['category_name']); ?></span>
+                                    <?php else: ?>
+                                        <span class="text-muted">N/A</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if (!empty($item['description'])): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="popover" data-bs-trigger="focus" title="Description" data-bs-content="<?php echo htmlspecialchars($item['description']); ?>">
+                                            View
+                                        </button>
+                                    <?php else: ?>
+                                        <span class="text-muted">N/A</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo date('M d, Y h:i A', strtotime($item['created_at'])); ?></td>
                             </tr>
                             <?php endforeach; ?>
@@ -267,7 +308,7 @@ try {
         <?php endif; ?>
         
         <?php if (!empty($media)): ?>
-        <div class="row">
+        <div class="row mb-4">
             <div class="col-12">
                 <h6 class="border-bottom pb-2 mb-3">Claim Media</h6>
                 
@@ -279,6 +320,9 @@ try {
                                 <img src="/warranty-management-system/uploads/claims/<?php echo $claimId; ?>/photos/<?php echo basename(htmlspecialchars($item['file_path'])); ?>" class="card-img-top" alt="Claim Photo">
                                 <div class="card-body p-2">
                                     <p class="card-text small text-muted mb-0"><?php echo htmlspecialchars($item['original_filename']); ?></p>
+                                    <?php if (!empty($item['sku'])): ?>
+                                    <p class="card-text small text-primary mb-0">SKU: <?php echo htmlspecialchars($item['sku']); ?></p>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -291,6 +335,9 @@ try {
                                 </video>
                                 <div class="card-body p-2">
                                     <p class="card-text small text-muted mb-0"><?php echo htmlspecialchars($item['original_filename']); ?></p>
+                                    <?php if (!empty($item['sku'])): ?>
+                                    <p class="card-text small text-primary mb-0">SKU: <?php echo htmlspecialchars($item['sku']); ?></p>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -421,6 +468,19 @@ try {
 
 <!-- Include claim notes JS -->
 <script src="js/claim-notes.js"></script>
+
+<!-- Initialize popovers -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+        var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+            return new bootstrap.Popover(popoverTriggerEl, {
+                html: true,
+                sanitize: false
+            })
+        })
+    });
+</script>
 
 <?php
 // Include footer

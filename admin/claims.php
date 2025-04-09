@@ -76,18 +76,13 @@ try {
                 `customer_name` varchar(100) NOT NULL,
                 `customer_email` varchar(100) NOT NULL,
                 `customer_phone` varchar(20) DEFAULT NULL,
-                `category_id` int(11) NOT NULL,
-                `sku` varchar(50) NOT NULL,
-                `product_type` varchar(50) NOT NULL,
                 `delivery_date` date NOT NULL,
-                `description` text NOT NULL,
                 `status` enum('new','in_progress','on_hold','approved','rejected') NOT NULL DEFAULT 'new',
                 `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                 `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
                 `created_by` int(11) NOT NULL,
-                PRIMARY KEY (`id`),
-                KEY `category_id` (`category_id`),
-                CONSTRAINT `claims_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `claim_categories` (`id`) ON DELETE CASCADE
+                `claim_number` VARCHAR(50) NULL,
+                PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ";
         $conn->exec($createTableSQL);
@@ -108,6 +103,9 @@ try {
                 `claim_id` int(11) NOT NULL,
                 `sku` varchar(50) NOT NULL,
                 `product_name` varchar(255) NOT NULL,
+                `product_type` varchar(50) NOT NULL,
+                `description` text NOT NULL,
+                `category_id` int(11) NOT NULL,
                 `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                 PRIMARY KEY (`id`),
                 KEY `claim_id` (`claim_id`),
@@ -175,6 +173,19 @@ try {
     if (!file_exists($uploadsDir)) {
         mkdir($uploadsDir, 0755, true);
     }
+    
+    // Check if claim_number column exists in claims table, if not add it
+    try {
+        $stmt = $conn->query("SHOW COLUMNS FROM `claims` LIKE 'claim_number'");
+        if ($stmt->rowCount() === 0) {
+            // Add claim_number column
+            $alterTableSQL = "ALTER TABLE `claims` ADD COLUMN `claim_number` VARCHAR(50) NULL AFTER `created_by`";
+            $conn->exec($alterTableSQL);
+        }
+    } catch (PDOException $e) {
+        // Log error
+        error_log("Error checking/adding claim_number column: " . $e->getMessage());
+    }
 } catch (PDOException $e) {
     // Log error
     error_log("Error creating tables: " . $e->getMessage());
@@ -214,206 +225,129 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
         $orderId = trim($_POST['order_id']);
         $customerName = trim($_POST['customer_name']);
         $customerEmail = trim($_POST['customer_email']);
-        $customerPhone = trim($_POST['customer_phone']);
-        $categoryId = (int)$_POST['category_id'];
-        $description = trim($_POST['description']);
+        $customerPhone = isset($_POST['customer_phone']) ? trim($_POST['customer_phone']) : '';
+        $deliveryDate = $_POST['delivery_date'];
         $userId = $_SESSION['user_id'];
-        $deliveryDate = isset($_POST['delivery_date']) ? trim($_POST['delivery_date']) : date('Y-m-d');
         
-        // Get SKU from the first item (if available)
-        $sku = '';
-        $productType = '';
-        if (isset($_POST['item_sku']) && is_array($_POST['item_sku']) && !empty($_POST['item_sku'][0])) {
-            $sku = trim($_POST['item_sku'][0]);
-            $productType = isset($_POST['item_product_type'][0]) ? trim($_POST['item_product_type'][0]) : '';
-        }
+        // Get arrays of item-specific data
+        $itemSkus = $_POST['item_sku'] ?? [];
+        $itemProductNames = $_POST['item_product_name'] ?? [];
+        $itemProductTypes = $_POST['item_product_type'] ?? [];
+        $categoryIds = $_POST['category_id'] ?? [];
+        $descriptions = $_POST['description'] ?? [];
+        $claimNumbers = $_POST['claim_number'] ?? [];
         
-        // Check if a claim already exists for this order ID and SKU
-        $stmt = $conn->prepare("SELECT id FROM claims WHERE order_id = ? AND sku = ?");
-        $stmt->execute([$orderId, $sku]);
+        // Process multiple items
+        $insertedClaimIds = [];
         
-        if ($stmt->rowCount() > 0) {
-            throw new Exception("A claim for this order and product already exists. Please check existing claims.");
-        }
+        // Start transaction
+        $conn->beginTransaction();
         
-        // Insert claim record
-        $stmt = $conn->prepare("
-            INSERT INTO claims (
-                order_id, customer_name, customer_email, customer_phone, 
-                category_id, sku, product_type, delivery_date, description, status, created_by
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?
-            )
-        ");
-        
-        $stmt->execute([
-            $orderId, $customerName, $customerEmail, $customerPhone, 
-            $categoryId, $sku, $productType, $deliveryDate, $description, $userId
-        ]);
-        
-        $claimId = $conn->lastInsertId();
-        
-        // Insert claim items
-        if (isset($_POST['item_sku']) && is_array($_POST['item_sku'])) {
-            $stmt = $conn->prepare("
-                INSERT INTO claim_items (
-                    claim_id, sku, product_name
-                ) VALUES (
-                    ?, ?, ?
-                )
-            ");
+        for ($i = 0; $i < count($itemSkus); $i++) {
+            $sku = $itemSkus[$i];
+            $productName = $itemProductNames[$i];
+            $productType = $itemProductTypes[$i];
+            $categoryId = $categoryIds[$i];
+            $description = $descriptions[$i];
+            $claimNumber = $claimNumbers[$i] ?? 'CLAIM-' . strtoupper(substr(uniqid(), -6));
             
-            foreach ($_POST['item_sku'] as $key => $sku) {
-                if (!empty($sku)) {
-                    $productName = $_POST['item_product_name'][$key] ?? '';
-                    
-                    $stmt->execute([
-                        $claimId, $sku, $productName
-                    ]);
+            // Insert claim record
+            $insertClaimSQL = "
+                INSERT INTO `claims` (
+                    `order_id`, `customer_name`, `customer_email`, `customer_phone`, 
+                    `delivery_date`, `created_by`, `claim_number`
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?
+                )
+            ";
+            
+            $stmt = $conn->prepare($insertClaimSQL);
+            $stmt->execute([
+                $orderId, $customerName, $customerEmail, $customerPhone,
+                $deliveryDate, $userId, $claimNumber
+            ]);
+            
+            $claimId = $conn->lastInsertId();
+            $insertedClaimIds[] = $claimId;
+            
+            // Insert claim item
+            $insertItemSQL = "
+                INSERT INTO `claim_items` (`claim_id`, `sku`, `product_name`, `product_type`, `description`, `category_id`)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ";
+            
+            $stmt = $conn->prepare($insertItemSQL);
+            $stmt->execute([$claimId, $sku, $productName, $productType, $description, $categoryId]);
+            
+            // Process photos for this item
+            $photoField = "photos_" . $i;
+            if (!empty($_FILES[$photoField]['name'][0])) {
+                $uploadDir = '../uploads/claims/' . $claimId . '/photos/';
+                if (!file_exists($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
                 }
-            }
-        }
-        
-        // Process photo uploads
-        if (!empty($_FILES['photos']['name'][0])) {
-            $uploadDir = '../uploads/claims/' . $claimId . '/photos/';
-            
-            // Create directory if it doesn't exist
-            if (!file_exists($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
-            }
-            
-            $stmt = $conn->prepare("
-                INSERT INTO claim_media (
-                    claim_id, file_path, file_type, original_filename, file_size
-                ) VALUES (
-                    ?, ?, 'photo', ?, ?
-                )
-            ");
-            
-            $fileCount = count($_FILES['photos']['name']);
-            $maxPhotoSize = 2 * 1024 * 1024; // 2MB in bytes
-            $photoErrors = [];
-            
-            for ($i = 0; $i < $fileCount; $i++) {
-                if ($_FILES['photos']['error'][$i] === UPLOAD_ERR_OK) {
-                    $tmpName = $_FILES['photos']['tmp_name'][$i];
-                    $originalName = $_FILES['photos']['name'][$i];
-                    $fileSize = $_FILES['photos']['size'][$i];
-                    $fileType = $_FILES['photos']['type'][$i];
-                    
-                    // Check file size
-                    if ($fileSize > $maxPhotoSize) {
-                        $photoErrors[] = "Photo '$originalName' exceeds the maximum size limit of 2MB.";
-                        continue;
-                    }
-                    
-                    // Generate a unique filename
-                    $extension = pathinfo($originalName, PATHINFO_EXTENSION);
-                    $newFileName = uniqid('photo_') . '.' . $extension;
-                    $filePath = $uploadDir . $newFileName;
-                    
-                    // Move the uploaded file
-                    if (move_uploaded_file($tmpName, $filePath)) {
-                        $relativePath = 'uploads/claims/' . $claimId . '/photos/' . $newFileName;
+                
+                $photoCount = count($_FILES[$photoField]['name']);
+                
+                for ($j = 0; $j < $photoCount; $j++) {
+                    if ($_FILES[$photoField]['error'][$j] === 0) {
+                        $fileName = basename($_FILES[$photoField]['name'][$j]);
+                        $fileSize = $_FILES[$photoField]['size'][$j];
+                        $targetFile = $uploadDir . uniqid() . '_' . $fileName;
                         
-                        $stmt->execute([
-                            $claimId, $relativePath, $originalName, $fileSize
-                        ]);
+                        // Move uploaded file
+                        if (move_uploaded_file($_FILES[$photoField]['tmp_name'][$j], $targetFile)) {
+                            // Insert into claim_media table
+                            $insertMediaSQL = "
+                                INSERT INTO `claim_media` (`claim_id`, `file_path`, `file_type`, `original_filename`, `file_size`)
+                                VALUES (?, ?, ?, ?, ?)
+                            ";
+                            
+                            $stmt = $conn->prepare($insertMediaSQL);
+                            $stmt->execute([$claimId, $targetFile, 'photo', $fileName, $fileSize]);
+                        }
                     }
                 }
             }
             
-            if (!empty($photoErrors)) {
-                throw new Exception(implode('<br>', $photoErrors));
-            }
-        }
-        
-        // Process video uploads
-        if (!empty($_FILES['videos']['name'][0])) {
-            $uploadDir = '../uploads/claims/' . $claimId . '/videos/';
-            
-            // Create directory if it doesn't exist
-            if (!file_exists($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
-            }
-            
-            $stmt = $conn->prepare("
-                INSERT INTO claim_media (
-                    claim_id, file_path, file_type, original_filename, file_size
-                ) VALUES (
-                    ?, ?, 'video', ?, ?
-                )
-            ");
-            
-            $fileCount = count($_FILES['videos']['name']);
-            $maxVideoSize = 10 * 1024 * 1024; // 10MB in bytes
-            $allowedVideoTypes = ['video/mp4', 'video/quicktime']; // MP4 and MOV formats
-            $allowedVideoExtensions = ['mp4', 'mov'];
-            $videoErrors = [];
-            
-            for ($i = 0; $i < $fileCount; $i++) {
-                if ($_FILES['videos']['error'][$i] === UPLOAD_ERR_OK) {
-                    $tmpName = $_FILES['videos']['tmp_name'][$i];
-                    $originalName = $_FILES['videos']['name'][$i];
-                    $fileSize = $_FILES['videos']['size'][$i];
-                    $fileType = $_FILES['videos']['type'][$i];
-                    
-                    // Check file size
-                    if ($fileSize > $maxVideoSize) {
-                        $videoErrors[] = "Video '$originalName' exceeds the maximum size limit of 10MB.";
-                        continue;
-                    }
-                    
-                    // Check file type
-                    if (!in_array($fileType, $allowedVideoTypes)) {
-                        $videoErrors[] = "Video '$originalName' is not in an allowed format (MP4 or MOV).";
-                        continue;
-                    }
-                    
-                    // Check file extension
-                    $extension = pathinfo($originalName, PATHINFO_EXTENSION);
-                    if (!in_array($extension, $allowedVideoExtensions)) {
-                        $videoErrors[] = "Video '$originalName' is not in an allowed format (MP4 or MOV).";
-                        continue;
-                    }
-                    
-                    // Generate a unique filename
-                    $newFileName = uniqid('video_') . '.' . $extension;
-                    $filePath = $uploadDir . $newFileName;
-                    
-                    // Move the uploaded file
-                    if (move_uploaded_file($tmpName, $filePath)) {
-                        $relativePath = 'uploads/claims/' . $claimId . '/videos/' . $newFileName;
+            // Process videos for this item
+            $videoField = "videos_" . $i;
+            if (!empty($_FILES[$videoField]['name'][0])) {
+                $uploadDir = '../uploads/claims/' . $claimId . '/videos/';
+                if (!file_exists($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                
+                $videoCount = count($_FILES[$videoField]['name']);
+                
+                for ($j = 0; $j < $videoCount; $j++) {
+                    if ($_FILES[$videoField]['error'][$j] === 0) {
+                        $fileName = basename($_FILES[$videoField]['name'][$j]);
+                        $fileSize = $_FILES[$videoField]['size'][$j];
+                        $targetFile = $uploadDir . uniqid() . '_' . $fileName;
                         
-                        $stmt->execute([
-                            $claimId, $relativePath, $originalName, $fileSize
-                        ]);
+                        // Move uploaded file
+                        if (move_uploaded_file($_FILES[$videoField]['tmp_name'][$j], $targetFile)) {
+                            // Insert into claim_media table
+                            $insertMediaSQL = "
+                                INSERT INTO `claim_media` (`claim_id`, `file_path`, `file_type`, `original_filename`, `file_size`)
+                                VALUES (?, ?, ?, ?, ?)
+                            ";
+                            
+                            $stmt = $conn->prepare($insertMediaSQL);
+                            $stmt->execute([$claimId, $targetFile, 'video', $fileName, $fileSize]);
+                        }
                     }
                 }
             }
-            
-            if (!empty($videoErrors)) {
-                throw new Exception(implode('<br>', $videoErrors));
-            }
         }
         
-        // Log claim creation
-        $stmt = $conn->prepare("
-            INSERT INTO audit_logs (
-                user_id, action, entity_type, entity_id, details, ip_address
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?
-            )
-        ");
+        // Commit transaction
+        $conn->commit();
         
-        $logDetails = "Created new claim for order: $orderId";
-        $stmt->execute([
-            $userId, 'create', 'claims', $claimId, $logDetails, $_SERVER['REMOTE_ADDR']
-        ]);
-        
-        // Set success message
-        $successMessage = "Claim #$claimId created successfully.";
+        // Set success message with the number of claims created
+        $claimCount = count($insertedClaimIds);
+        $_SESSION['success_message'] = "Successfully created {$claimCount} warranty claim(s) for order {$orderId}.";
         
     } catch (PDOException $e) {
         // Log error
@@ -430,17 +364,37 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
     }
 }
 
-// Get claims from database
+// Get claims from database with all associated items
 $claims = [];
-$claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.description, c.status, 
-                       c.sku, c.created_at, c.updated_at, c.created_by, c.category_id,
-                       cc.name as category_name, cc.sla_days 
-                FROM claims c
-                LEFT JOIN claim_categories cc ON c.category_id = cc.id
-                ORDER BY c.id DESC";
+$claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
+                      c.created_at, c.updated_at, c.created_by, c.claim_number,
+                      cc.name as category_name, cc.sla_days 
+               FROM claims c
+               LEFT JOIN claim_items ci ON c.id = ci.claim_id
+               LEFT JOIN claim_categories cc ON ci.category_id = cc.id
+               GROUP BY c.id
+               ORDER BY c.id DESC";
 $stmt = $conn->prepare($claimsQuery);
 $stmt->execute();
 $claims = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get items for each claim
+$claimItems = [];
+if (!empty($claims)) {
+    $claimIds = array_column($claims, 'id');
+    $placeholders = str_repeat('?,', count($claimIds) - 1) . '?';
+    
+    $itemsQuery = "SELECT claim_id, sku, product_name, product_type, description, category_id
+                  FROM claim_items 
+                  WHERE claim_id IN ($placeholders)
+                  ORDER BY claim_id, id";
+    $stmt = $conn->prepare($itemsQuery);
+    $stmt->execute($claimIds);
+    
+    while ($item = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $claimItems[$item['claim_id']][] = $item;
+    }
+}
 
 // Get categories for dropdown
 $categoriesQuery = "SELECT id, name FROM claim_categories ORDER BY name";
@@ -548,7 +502,7 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                 $warningText = !$isWarrantyValid ? 'Warranty Expired' : 'Warranty Valid';
                 
                 $itemsHtml .= '<div class="form-check mb-2 p-2 border rounded item-container">';
-                $itemsHtml .= '<input type="checkbox" class="form-check-input item-checkbox" name="claim_items[]" value="' . $index . '" id="item_' . $index . '" ' . $disabled . '>';
+                $itemsHtml .= '<input type="checkbox" class="form-check-input item-checkbox" name="claim_items[]" value="' . $index . '" id="item_' . $index . '" ' . $disabled . ' onchange="updateSelectedItems()">';
                 $itemsHtml .= '<label class="form-check-label" for="item_' . $index . '">';
                 $itemsHtml .= '<strong>' . htmlspecialchars($productName) . '</strong> (SKU: ' . htmlspecialchars($sku) . ')';
                 $itemsHtml .= '</label>';
@@ -653,11 +607,10 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
             <table class="table table-hover table-striped" id="claimsTable" width="100%" cellspacing="0">
                 <thead class="table-light">
                     <tr>
-                        <th>Claim ID</th>
+                        <th>Claim #</th>
                         <th>Order ID</th>
                         <th>Customer</th>
-                        <th>SKU</th>
-                        <th>Category</th>
+                        <th>Products & Categories</th>
                         <th>SLA</th>
                         <th>Status</th>
                         <th>Created At</th>
@@ -667,16 +620,43 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                 <tbody>
                     <?php if (empty($claims)): ?>
                     <tr>
-                        <td colspan="9" class="text-center py-3">No claims found.</td>
+                        <td colspan="8" class="text-center py-3">No claims found.</td>
                     </tr>
                     <?php else: ?>
                     <?php foreach ($claims as $claim): ?>
                     <tr data-claim-id="<?php echo $claim['id']; ?>">
-                        <td>#<?php echo $claim['id']; ?></td>
+                        <td>
+                            <?php if (!empty($claim['claim_number'])): ?>
+                                <span class="badge bg-info"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
+                            <?php else: ?>
+                                #<?php echo $claim['id']; ?>
+                            <?php endif; ?>
+                        </td>
                         <td><?php echo htmlspecialchars($claim['order_id']); ?></td>
                         <td><?php echo htmlspecialchars($claim['customer_name']); ?></td>
-                        <td><?php echo htmlspecialchars($claim['sku']); ?></td>
-                        <td><?php echo htmlspecialchars($claim['category_name'] ?? 'N/A'); ?></td>
+                        <td>
+                            <?php if (isset($claimItems[$claim['id']])): ?>
+                                <div class="product-list">
+                                <?php foreach ($claimItems[$claim['id']] as $index => $item): 
+                                    // Get category name for this item
+                                    $catStmt = $conn->prepare("SELECT name FROM claim_categories WHERE id = ?");
+                                    $catStmt->execute([$item['category_id']]);
+                                    $categoryName = $catStmt->fetchColumn() ?: 'N/A';
+                                ?>
+                                    <div class="product-item mb-1">
+                                        <strong class="d-block"><?php echo htmlspecialchars($item['sku']); ?></strong>
+                                        <small class="text-muted d-block"><?php echo htmlspecialchars($item['product_name']); ?></small>
+                                        <span class="badge bg-secondary"><?php echo htmlspecialchars($categoryName); ?></span>
+                                    </div>
+                                    <?php if ($index < count($claimItems[$claim['id']]) - 1): ?>
+                                        <hr class="my-1">
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <span class="text-muted">N/A</span>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <?php
                             // Calculate SLA deadline
@@ -863,54 +843,11 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                             <input type="hidden" name="order_id" id="claim_order_id">
                             <?php include 'includes/claim_form_fields.php'; ?>
                             
-                            <!-- Claim Details -->
-                            <h6 class="border-bottom pb-2 mb-3">Claim Details</h6>
-                            <div class="row mb-4">
-                                <div class="col-md-4 mb-3">
-                                    <label for="category_id" class="form-label fw-bold">Claim Category</label>
-                                    <select class="form-select" id="category_id" name="category_id" required>
-                                        <option value="">Select Category</option>
-                                        <?php foreach ($categories as $category): ?>
-                                        <option value="<?php echo $category['id']; ?>">
-                                            <?php echo htmlspecialchars($category['name']); ?>
-                                        </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                <div class="col-md-8 mb-3">
-                                    <label for="description" class="form-label fw-bold">Claim Description</label>
-                                    <textarea class="form-control" id="description" name="description" rows="3" required
-                                          placeholder="Describe the issue or reason for the warranty claim"></textarea>
-                                </div>
-                            </div>
-                            
-                            <!-- Media Upload Section -->
-                            <h6 class="border-bottom pb-2 mb-3">Supporting Media</h6>
+                            <!-- Selected Items Container -->
+                            <div id="selected_items_container" class="mb-4"></div>
                             
                             <!-- File Upload Errors Container -->
                             <div id="file-upload-errors" class="alert alert-danger mb-3" style="display:none;"></div>
-                            
-                            <div class="row mb-4">
-                                <div class="col-md-6 mb-3">
-                                    <label for="photos" class="form-label fw-bold">Upload Photos</label>
-                                    <input type="file" class="form-control" id="photos" name="photos[]" multiple accept="image/*">
-                                    <div class="form-text">
-                                        <i class="fas fa-info-circle text-primary me-1"></i> Max size: <strong>2MB</strong> per image. Supported formats: JPG, PNG, GIF.
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="videos" class="form-label fw-bold">Upload Videos</label>
-                                    <input type="file" class="form-control" id="videos" name="videos[]" multiple accept="video/mp4,video/quicktime">
-                                    <div class="form-text">
-                                        <i class="fas fa-info-circle text-primary me-1"></i> Max size: <strong>10MB</strong> per video. Supported formats: <strong>MP4, MOV only</strong>.
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <div class="form-text text-muted">
-                                        <i class="fas fa-info-circle"></i> Supporting media helps us better understand the issue and process your claim faster.
-                                    </div>
-                                </div>
-                            </div>
                             
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -966,16 +903,13 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
 <div class="modal fade" id="deleteClaimModal" tabindex="-1" aria-labelledby="deleteClaimModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteClaimModalLabel">Delete Claim</h5>
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteClaimModalLabel">Confirm Delete</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to delete this claim? This action cannot be undone.</p>
-                <p><strong>Claim Details:</strong></p>
-                <ul>
-                    <li>Order ID: <span id="delete_order_id"></span></li>
-                </ul>
+                <p>Are you sure you want to delete the claim for order <strong id="delete_order_id"></strong>?</p>
+                <p class="text-danger">This action cannot be undone. All claim details, photos, and videos will be permanently deleted.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -994,222 +928,399 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
 <script>
     // Set this to true to enable AJAX form submission
     window.useAjaxSubmission = true;
-</script>
-
-<!-- Initialize DataTable -->
-<script>
-    $(document).ready(function() {
-        $('#claimsTable').DataTable({
-            responsive: true,
-            stateSave: true,
-            "columnDefs": [
-                { "orderable": false, "targets": -1 } // Disable sorting on action column
-            ],
-            "order": [[ 0, "desc" ]], // Sort by ID descending by default
-            "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
-            "language": {
-                "lengthMenu": "Show _MENU_ claims per page",
-                "zeroRecords": "No claims found",
-                "info": "Showing page _PAGE_ of _PAGES_",
-                "infoEmpty": "No claims available",
-                "infoFiltered": "(filtered from _MAX_ total claims)"
-            }
-        });
+    
+    // Pass categories to JavaScript for form generation
+    window.claimCategories = <?php echo json_encode($categories); ?>;
+    
+    // Debug function to log events
+    function debugLog(message, data) {
+        console.log(`[DEBUG] ${message}`, data || '');
+    }
+    
+    // Global function to update selected items - called directly from checkbox onchange
+    function updateSelectedItems() {
+        debugLog('updateSelectedItems called');
         
-        // Update status modal
-        $('.update-status').on('click', function() {
-            const claimId = $(this).data('id');
-            const status = $(this).data('status');
-            
-            // Set values in the form
-            $('#status_claim_id').val(claimId);
-            $('#claim_status').val(status);
-            
-            console.log("Opening modal for claim ID:", claimId, "with status:", status);
-            console.log("Form values set:", {
-                claim_id: $('#status_claim_id').val(),
-                status: $('#claim_status').val()
-            });
-            
-            $('#updateStatusModal').modal('show');
-        });
+        // Get all checkboxes
+        const checkboxes = document.querySelectorAll('.item-checkbox');
+        console.log('Total checkboxes found:', checkboxes.length);
         
-        // Delete claim modal
-        $('.delete-claim').on('click', function() {
-            const claimId = $(this).data('id');
-            const orderId = $(this).data('order');
+        // Count checked checkboxes
+        const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+        console.log('Checked checkboxes:', checkedCount);
+        
+        // Update UI based on selection
+        const container = document.getElementById('selected_items_container');
+        if (!container) {
+            console.error('Selected items container not found');
+            return;
+        }
+        
+        // Clear container
+        container.innerHTML = '';
+        
+        // If no items selected, show warning
+        if (checkedCount === 0) {
+            container.innerHTML = '<div class="alert alert-warning">Please select at least one item to configure claim details.</div>';
+            return;
+        }
+        
+        // Get selected items
+        const selectedItems = Array.from(checkboxes).filter(cb => cb.checked);
+        
+        // Get categories
+        const categories = window.claimCategories || [];
+        
+        // Get order ID for claim number
+        const orderId = document.getElementById('claim_order_id').value;
+        const orderNum = orderId.replace(/[^\d]/g, '');
+        
+        // Create form for each selected item
+        selectedItems.forEach(function(item, index) {
+            const sku = item.getAttribute('data-sku');
+            const productName = item.getAttribute('data-product-name');
+            const productType = item.getAttribute('data-product-type');
             
-            $('#delete_order_id').text(orderId);
-            $('#confirmDeleteBtn').attr('href', 'delete_claim.php?id=' + claimId);
+            console.log('Generating form for item:', sku, productName);
             
-            $('#deleteClaimModal').modal('show');
-        });
-        
-        // Display session messages
-        <?php if (isset($_SESSION['success_message'])): ?>
-            showAlert('success', '<?php echo addslashes($_SESSION['success_message']); ?>');
-            <?php unset($_SESSION['success_message']); ?>
-        <?php endif; ?>
-        
-        <?php if (isset($_SESSION['error_message'])): ?>
-            showAlert('danger', '<?php echo addslashes($_SESSION['error_message']); ?>');
-            <?php unset($_SESSION['error_message']); ?>
-        <?php endif; ?>
-        
-        // Function to show alert
-        function showAlert(type, message) {
-            const alertHtml = `
-                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            // Generate claim number
+            const skuPrefix = sku ? sku.substring(0, 4).toUpperCase() : 'ITEM';
+            const claimNum = 'CLAIM-' + orderNum + '-' + skuPrefix;
+            
+            // Create item form
+            const itemForm = document.createElement('div');
+            itemForm.className = 'item-form bg-light p-3 mb-3 border rounded';
+            itemForm.innerHTML = `
+                <h5 class="border-bottom pb-2 mb-3 text-primary">Item: ${productName}</h5>
+                <input type="hidden" name="item_sku[]" value="${sku}">
+                <input type="hidden" name="item_product_name[]" value="${productName}">
+                <input type="hidden" name="item_product_type[]" value="${productType}">
+                <input type="hidden" name="claim_number[]" value="${claimNum}">
+                <input type="hidden" name="selected_item_index[]" value="${item.value}">
+                
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <p><strong>SKU:</strong> ${sku} <span class="mx-3">|</span> <strong>Product Type:</strong> ${productType || 'N/A'}</p>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Claim Category</label>
+                        <select class="form-select" name="category_id[]" required>
+                            <option value="">Select Category</option>
+                            ${categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold">Description</label>
+                        <textarea class="form-control" name="description[]" rows="3" required placeholder="Describe the issue..."></textarea>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Photos</label>
+                        <input type="file" class="form-control" name="photos_${index}[]" multiple accept="image/*">
+                        <div class="form-text">Max size: 2MB per image</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Videos</label>
+                        <input type="file" class="form-control" name="videos_${index}[]" multiple accept="video/mp4,video/quicktime">
+                        <div class="form-text">Max size: 10MB (MP4/MOV only)</div>
+                    </div>
                 </div>
             `;
             
-            $('.page-title').after(alertHtml);
-            
-            // Auto dismiss after 5 seconds
-            setTimeout(function() {
-                $('.alert').alert('close');
-            }, 5000);
-        }
-        
-        // Handle update status button click
-        $('.update-status-btn').on('click', function() {
-            updateClaimStatus();
+            container.appendChild(itemForm);
         });
         
-        // Function to update claim status
-        function updateClaimStatus() {
-            const modal = $('#updateStatusModal');
-            const claimId = $('#status_claim_id').val();
-            const status = $('#claim_status').val();
-            const note = $('#status_note').val();
-            
-            // Create FormData object
-            const formData = new FormData();
-            formData.append('claim_id', claimId);
-            formData.append('status', status);
-            formData.append('note', note);
-            
-            // Log the data for debugging
-            console.log("Claim ID:", claimId);
-            console.log("Status:", status);
-            console.log("Note:", note);
-            
-            // Show loading state
-            const submitBtn = modal.find('.update-status-btn');
-            const originalBtnText = submitBtn.html();
-            submitBtn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Updating...');
-            submitBtn.prop('disabled', true);
-            
-            // Make sure we have a claim ID
-            if (!claimId) {
-                showAlert('danger', 'No claim ID provided. Please try again.');
-                submitBtn.html(originalBtnText);
-                submitBtn.prop('disabled', false);
-                return;
-            }
-            
-            $.ajax({
-                url: 'ajax/update_claim_status_ajax.php',
-                type: 'POST',
-                data: {
-                    claim_id: claimId,
-                    status: status,
-                    note: note
-                },
-                traditional: true,
-                dataType: 'json',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                success: function(response) {
-                    console.log("Success Response:", response);
-                    
-                    // Hide modal
-                    modal.modal('hide');
-                    
-                    // Reset form
-                    $('#updateStatusForm')[0].reset();
-                    
-                    if (response.success) {
-                        // Update status in the table
-                        const newStatus = response.status;
-                        updateStatusInTable(claimId, newStatus);
-                        
-                        // Show success message
-                        showAlert('success', response.message);
-                    } else {
-                        // Show error message
-                        showAlert('danger', response.message || 'An error occurred while updating the status.');
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error("AJAX Error:", status, error);
-                    console.log("Response Text:", xhr.responseText);
-                    
-                    try {
-                        // Try to parse the response as JSON
-                        const errorResponse = JSON.parse(xhr.responseText);
-                        showAlert('danger', errorResponse.message || 'An error occurred while updating the status.');
-                    } catch (e) {
-                        // If parsing fails, show a generic error
-                        showAlert('danger', 'An error occurred while updating the status. Please try again.');
-                    }
-                },
-                complete: function() {
-                    // Reset button state
-                    submitBtn.html(originalBtnText);
-                    submitBtn.prop('disabled', false);
+        // Add a hidden field to indicate items were selected
+        const itemSelectedFlag = document.createElement('input');
+        itemSelectedFlag.type = 'hidden';
+        itemSelectedFlag.name = 'items_selected';
+        itemSelectedFlag.value = 'true';
+        container.appendChild(itemSelectedFlag);
+    }
+    
+    // Direct implementation of item checkbox handling
+    document.addEventListener('DOMContentLoaded', function() {
+        debugLog('DOM fully loaded, setting up event handlers');
+        
+        // Direct submit button handler - this will bypass any other handlers
+        const directSubmitBtn = document.getElementById('submitClaimBtn');
+        if (directSubmitBtn) {
+            debugLog('Setting up direct click handler for submit button');
+            directSubmitBtn.onclick = function(e) {
+                e.preventDefault();
+                debugLog('Submit button clicked via direct handler');
+                
+                // Check if items are selected
+                const selectedItems = document.querySelectorAll('.item-checkbox:checked');
+                const itemForms = document.querySelectorAll('.item-form');
+                
+                debugLog('Item selection check', {
+                    'Selected checkboxes': selectedItems.length,
+                    'Item forms': itemForms.length
+                });
+                
+                if (selectedItems.length === 0 && itemForms.length === 0) {
+                    alert('Please select at least one item for the warranty claim.');
+                    return false;
                 }
-            });
-        }
-        
-        // Function to update status in the table
-        function updateStatusInTable(claimId, newStatus) {
-            const statusText = getStatusText(newStatus);
-            const statusClass = getStatusClass(newStatus);
-            
-            // Find the row with the claim ID
-            const row = $(`tr[data-claim-id="${claimId}"]`);
-            if (row.length) {
-                // Update the status badge
-                const statusCell = row.find('td:nth-child(7)'); // Status is in the 7th column (index 7)
-                statusCell.html(`<span class="badge ${statusClass}">${statusText}</span>`);
                 
-                // Update the data attribute for the update status button
-                row.find('.update-status').data('status', newStatus);
+                // If items are selected but no forms, generate them
+                if (selectedItems.length > 0 && itemForms.length === 0) {
+                    updateSelectedItems();
+                }
                 
-                console.log("Updated status for claim ID:", claimId, "to:", newStatus);
-                console.log("Status cell:", statusCell);
-            } else {
-                console.error("Could not find row with claim ID:", claimId);
-            }
+                // Validate file uploads
+                const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB
+                const MAX_VIDEO_SIZE = 10 * 1024 * 1024; // 10MB
+                const ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'mov'];
+                
+                // Get all file inputs
+                const photoInputs = document.querySelectorAll('input[type="file"][name^="photos_"]');
+                const videoInputs = document.querySelectorAll('input[type="file"][name^="videos_"]');
+                
+                let errors = [];
+                
+                // Validate photos
+                photoInputs.forEach(input => {
+                    if (input.files.length > 0) {
+                        for (let i = 0; i < input.files.length; i++) {
+                            const file = input.files[i];
+                            if (file.size > MAX_PHOTO_SIZE) {
+                                errors.push(`Photo "${file.name}" exceeds the maximum size limit of 2MB.`);
+                            }
+                        }
+                    }
+                });
+                
+                // Validate videos
+                videoInputs.forEach(input => {
+                    if (input.files.length > 0) {
+                        for (let i = 0; i < input.files.length; i++) {
+                            const file = input.files[i];
+                            if (file.size > MAX_VIDEO_SIZE) {
+                                errors.push(`Video "${file.name}" exceeds the maximum size limit of 10MB.`);
+                            }
+                            
+                            const extension = file.name.split('.').pop().toLowerCase();
+                            if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
+                                errors.push(`Video "${file.name}" is not in an allowed format (MP4/MOV only).`);
+                            }
+                        }
+                    }
+                });
+                
+                // Display errors if any
+                if (errors.length > 0) {
+                    const errorContainer = document.getElementById('file-upload-errors');
+                    errorContainer.innerHTML = '<strong>File Upload Errors:</strong><ul>' + 
+                        errors.map(error => `<li>${error}</li>`).join('') + 
+                        '</ul>';
+                    errorContainer.style.display = 'block';
+                    errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return false;
+                }
+                
+                // Clear any previous errors
+                const errorContainer = document.getElementById('file-upload-errors');
+                errorContainer.style.display = 'none';
+                
+                // Submit the form via AJAX
+                debugLog('All validations passed, submitting form via AJAX');
+                
+                // Get form and create FormData object
+                const form = document.getElementById('claimForm');
+                const formData = new FormData(form);
+                
+                // Ensure required fields are included
+                const customerName = document.getElementById('customer_name_input') || document.querySelector('[name="customer_name"]');
+                const customerEmail = document.getElementById('customer_email_input') || document.querySelector('[name="customer_email"]');
+                const customerPhone = document.getElementById('customer_phone_input') || document.querySelector('[name="customer_phone"]');
+                const deliveryDateInput = document.querySelector('[name="delivery_date"]');
+                const orderIdInput = document.getElementById('claim_order_id');
+                
+                debugLog('Form fields found', {
+                    customerName: customerName ? 'Found' : 'Not found',
+                    customerEmail: customerEmail ? 'Found' : 'Not found',
+                    customerPhone: customerPhone ? 'Found' : 'Not found',
+                    deliveryDate: deliveryDateInput ? 'Found' : 'Not found',
+                    orderId: orderIdInput ? 'Found' : 'Not found'
+                });
+                
+                // Add customer info to formData if not already present
+                if (customerName && !formData.has('customer_name')) {
+                    formData.append('customer_name', customerName.value || 'Customer');
+                } else if (!formData.has('customer_name')) {
+                    formData.append('customer_name', 'Customer');
+                }
+                
+                if (customerEmail && !formData.has('customer_email')) {
+                    formData.append('customer_email', customerEmail.value || 'customer@example.com');
+                } else if (!formData.has('customer_email')) {
+                    formData.append('customer_email', 'customer@example.com');
+                }
+                
+                if (customerPhone && !formData.has('customer_phone')) {
+                    formData.append('customer_phone', customerPhone.value || '');
+                }
+                
+                // Add delivery date if not already present
+                if (deliveryDateInput && !formData.has('delivery_date')) {
+                    formData.append('delivery_date', deliveryDateInput.value || '');
+                } else if (!formData.has('delivery_date')) {
+                    // Use current date as fallback
+                    const today = new Date();
+                    const dateStr = today.toISOString().split('T')[0];
+                    formData.append('delivery_date', dateStr);
+                }
+                
+                // Ensure order_id is included
+                if (orderIdInput && !formData.has('order_id')) {
+                    formData.append('order_id', orderIdInput.value);
+                }
+                
+                // Add action if not already present
+                if (!formData.has('action')) {
+                    formData.append('action', 'submit_claim');
+                }
+                
+                // Debug form data
+                debugLog('Form data entries:');
+                for (let pair of formData.entries()) {
+                    debugLog(' - ' + pair[0] + ': ' + pair[1]);
+                }
+                
+                // Show loading state
+                const submitBtn = document.getElementById('submitClaimBtn');
+                const originalBtnText = submitBtn.innerHTML;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Submitting...';
+                submitBtn.disabled = true;
+                
+                // Send AJAX request
+                $.ajax({
+                    url: 'ajax/submit_claim.php',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json',
+                    success: function(response) {
+                        debugLog('AJAX submission successful', response);
+                        
+                        // Reset button
+                        submitBtn.innerHTML = originalBtnText;
+                        submitBtn.disabled = false;
+                        
+                        if (response.success) {
+                            // Close modal
+                            $('#addClaimModal').modal('hide');
+                            
+                            // Show success message
+                            alert(response.message || 'Claim submitted successfully!');
+                            
+                            // Reload page to show new claim
+                            window.location.reload();
+                        } else {
+                            // Show error message
+                            const errorContainer = document.getElementById('file-upload-errors');
+                            
+                            // Check if we have detailed errors
+                            if (response.errors && Array.isArray(response.errors) && response.errors.length > 0) {
+                                // Format detailed errors as a list
+                                let errorHtml = '<strong>Error:</strong> ' + (response.message || 'Failed to submit claim.') + '<ul class="mt-2 mb-0">';
+                                
+                                response.errors.forEach(function(error) {
+                                    errorHtml += '<li>' + error + '</li>';
+                                });
+                                
+                                errorHtml += '</ul>';
+                                errorContainer.innerHTML = errorHtml;
+                            } else {
+                                // Simple error message
+                                errorContainer.innerHTML = '<strong>Error:</strong> ' + (response.message || 'Failed to submit claim. Please try again.');
+                            }
+                            
+                            errorContainer.style.display = 'block';
+                            errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        debugLog('AJAX submission error', { xhr, status, error });
+                        
+                        // Reset button
+                        submitBtn.innerHTML = originalBtnText;
+                        submitBtn.disabled = false;
+                        
+                        // Try to parse response as JSON
+                        let errorMessage = 'Failed to submit claim. Please try again.';
+                        let errorDetails = [];
+                        
+                        try {
+                            const result = JSON.parse(xhr.responseText);
+                            if (result.message) {
+                                errorMessage = result.message;
+                            }
+                            
+                            // Check for detailed errors
+                            if (result.errors && Array.isArray(result.errors) && result.errors.length > 0) {
+                                errorDetails = result.errors;
+                            }
+                        } catch (e) {
+                            // Use default error message
+                            if (xhr.status === 404) {
+                                errorMessage = 'Submission endpoint not found. Please contact the administrator.';
+                            } else if (xhr.status === 500) {
+                                errorMessage = 'Server error. Please try again later.';
+                            }
+                        }
+                        
+                        // Show error message
+                        const errorContainer = document.getElementById('file-upload-errors');
+                        
+                        if (errorDetails.length > 0) {
+                            // Format detailed errors as a list
+                            let errorHtml = '<strong>Error:</strong> ' + errorMessage + '<ul class="mt-2 mb-0">';
+                            
+                            errorDetails.forEach(function(error) {
+                                errorHtml += '<li>' + error + '</li>';
+                            });
+                            
+                            errorHtml += '</ul>';
+                            errorContainer.innerHTML = errorHtml;
+                        } else {
+                            // Simple error message
+                            errorContainer.innerHTML = '<strong>Error:</strong> ' + errorMessage;
+                        }
+                        
+                        errorContainer.style.display = 'block';
+                        errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                });
+                
+                return false;
+            };
         }
         
-        // Function to get status text
-        function getStatusText(status) {
-            switch (status) {
-                case 'new': return 'New';
-                case 'in_progress': return 'In Progress';
-                case 'on_hold': return 'On Hold';
-                case 'approved': return 'Approved';
-                case 'rejected': return 'Rejected';
-                default: return 'Unknown';
+        // Add event delegation for checkbox clicks
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('item-checkbox')) {
+                console.log('Checkbox clicked:', e.target.id);
+                
+                // Highlight selected item
+                const card = e.target.closest('.card');
+                if (card) {
+                    if (e.target.checked) {
+                        card.classList.add('border-primary');
+                    } else {
+                        card.classList.remove('border-primary');
+                    }
+                }
             }
-        }
-        
-        // Function to get status badge class
-        function getStatusClass(status) {
-            switch (status) {
-                case 'new': return 'bg-primary';
-                case 'in_progress': return 'bg-info';
-                case 'on_hold': return 'bg-warning';
-                case 'approved': return 'bg-success';
-                case 'rejected': return 'bg-danger';
-                default: return 'bg-secondary';
-            }
-        }
+        });
     });
 </script>
 
@@ -1322,4 +1433,59 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
         box-shadow: none !important;
         transform: none !important;
     }
+    
+    /* Product list styling */
+    .product-list {
+        max-width: 250px;
+    }
+    .product-item {
+        padding: 4px 0;
+    }
+    .product-item strong {
+        font-size: 0.9rem;
+    }
+    .product-item small {
+        font-size: 0.8rem;
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 </style>
+
+<!-- Initialize DataTable -->
+<script>
+    $(document).ready(function() {
+        $('#claimsTable').DataTable({
+            responsive: true,
+            stateSave: true,
+            "columnDefs": [
+                { "orderable": false, "targets": -1 } // Disable sorting on action column
+            ],
+            "order": [[ 0, "desc" ]], // Sort by ID descending by default
+            "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
+            "language": {
+                "lengthMenu": "Show _MENU_ claims per page",
+                "zeroRecords": "No claims found",
+                "info": "Showing page _PAGE_ of _PAGES_",
+                "infoEmpty": "No claims available",
+                "infoFiltered": "(filtered from _MAX_ total claims)"
+            }
+        });
+        
+        // Delete claim modal
+        $(document).on('click', '.delete-claim', function() {
+            const claimId = $(this).data('id');
+            const orderId = $(this).data('order');
+            
+            $('#delete_order_id').text(orderId);
+            $('#confirmDeleteBtn').attr('href', 'delete_claim.php?id=' + claimId);
+            
+            $('#deleteClaimModal').modal('show');
+            
+            // Debug
+            console.log('Delete claim clicked:', { claimId, orderId });
+            console.log('Delete button href:', $('#confirmDeleteBtn').attr('href'));
+        });
+    });
+</script>

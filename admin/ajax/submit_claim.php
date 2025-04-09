@@ -77,8 +77,14 @@ try {
         error_log("Error fetching customer data from database: " . $e->getMessage());
     }
     
-    $categoryId = (int)$_POST['category_id'];
-    $description = trim($_POST['description']);
+    // Handle arrays for category_id and description
+    $categoryIds = isset($_POST['category_id']) ? $_POST['category_id'] : [];
+    $descriptions = isset($_POST['description']) ? $_POST['description'] : [];
+    
+    // For backward compatibility, get the first item if arrays
+    $categoryId = is_array($categoryIds) && !empty($categoryIds) ? (int)$categoryIds[0] : (int)$categoryIds;
+    $description = is_array($descriptions) && !empty($descriptions) ? trim($descriptions[0]) : trim($descriptions);
+    
     $userId = $_SESSION['user_id'];
     $deliveryDate = isset($_POST['delivery_date']) ? trim($_POST['delivery_date']) : date('Y-m-d');
     
@@ -105,37 +111,71 @@ try {
         $errors[] = 'Customer email is required.';
     }
     
-    if (empty($categoryId)) {
-        $errors[] = 'Claim category is required.';
+    // Check if we have at least one item with category and description
+    $hasValidItem = false;
+    
+    if (isset($_POST['item_sku']) && is_array($_POST['item_sku'])) {
+        foreach ($_POST['item_sku'] as $key => $sku) {
+            if (!empty($sku)) {
+                // Check if this item has a category
+                $itemCategoryId = is_array($_POST['category_id']) ? ($_POST['category_id'][$key] ?? null) : $_POST['category_id'] ?? null;
+                $itemDescription = is_array($_POST['description']) ? ($_POST['description'][$key] ?? null) : $_POST['description'] ?? null;
+                
+                if (!empty($itemCategoryId) && !empty($itemDescription)) {
+                    $hasValidItem = true;
+                    break;
+                }
+            }
+        }
     }
     
-    if (empty($description)) {
-        $errors[] = 'Claim description is required.';
+    if (!$hasValidItem) {
+        if (!isset($_POST['category_id']) || (is_array($_POST['category_id']) && empty(array_filter($_POST['category_id']))) || (is_string($_POST['category_id']) && empty($_POST['category_id']))) {
+            $errors[] = 'Claim category is required.';
+        }
+        
+        if (!isset($_POST['description']) || (is_array($_POST['description']) && empty(array_filter($_POST['description']))) || (is_string($_POST['description']) && empty($_POST['description']))) {
+            $errors[] = 'Claim description is required.';
+        }
     }
     
     if (empty($sku)) {
-        $errors[] = 'Product SKU is required.';
+        $errors[] = 'At least one item must be selected for the claim.';
+    }
+    
+    // Validate file uploads
+    $photoErrors = validatePhotoUploads();
+    $videoErrors = validateVideoUploads();
+    
+    // Add file validation errors to the main errors array
+    $errors = array_merge($errors, $photoErrors, $videoErrors);
+    
+    // If there are validation errors, return them
+    if (!empty($errors)) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Please fix the following errors:',
+            'errors' => $errors
+        ]);
+        exit;
     }
     
     // Check if a claim already exists for this order ID and SKU
-    $stmt = $conn->prepare("SELECT id FROM claims WHERE order_id = ? AND sku = ?");
+    $stmt = $conn->prepare("
+        SELECT c.id 
+        FROM claims c
+        JOIN claim_items ci ON c.id = ci.claim_id
+        WHERE c.order_id = ? AND ci.sku = ?
+        LIMIT 1
+    ");
     $stmt->execute([$orderId, $sku]);
     
     if ($stmt->rowCount() > 0) {
         $errors[] = "A claim for this order and product already exists. Please check existing claims.";
     }
     
-    // Validate photo uploads
-    $photoErrors = validatePhotoUploads();
-    $errors = array_merge($errors, $photoErrors);
-    
-    // Validate video uploads
-    $videoErrors = validateVideoUploads();
-    $errors = array_merge($errors, $videoErrors);
-    
     // If there are validation errors, return them
     if (!empty($errors)) {
-        error_log("Validation errors: " . json_encode($errors));
         echo json_encode([
             'success' => false,
             'message' => 'Please fix the following errors:',
@@ -147,19 +187,30 @@ try {
     // Start transaction
     $conn->beginTransaction();
     
+    // Generate claim number based on order number
+    $claimNumber = '';
+    if (strpos($orderId, 'TMR-O') === 0) {
+        // Extract the numeric part of the order ID
+        $orderNumeric = substr($orderId, 5); // Remove "TMR-O" prefix
+        $claimNumber = 'CLAIM-' . $orderNumeric;
+    } else {
+        // Fallback to a random claim number if order ID doesn't match expected format
+        $claimNumber = 'CLAIM-' . strtoupper(substr(uniqid(), -8));
+    }
+    
     // Insert claim record
     $stmt = $conn->prepare("
         INSERT INTO claims (
             order_id, customer_name, customer_email, customer_phone, 
-            category_id, sku, product_type, delivery_date, description, status, created_by
+            delivery_date, status, created_by, claim_number
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?
+            ?, ?, ?, ?, ?, 'new', ?, ?
         )
     ");
     
     $stmt->execute([
         $orderId, $customerName, $customerEmail, $customerPhone, 
-        $categoryId, $sku, $productType, $deliveryDate, $description, $userId
+        $deliveryDate, $userId, $claimNumber
     ]);
     
     $claimId = $conn->lastInsertId();
@@ -168,45 +219,53 @@ try {
     if (isset($_POST['item_sku']) && is_array($_POST['item_sku'])) {
         $stmt = $conn->prepare("
             INSERT INTO claim_items (
-                claim_id, sku, product_name
+                claim_id, sku, product_name, product_type, category_id, description
             ) VALUES (
-                ?, ?, ?
+                ?, ?, ?, ?, ?, ?
             )
         ");
+        
+        $claimItemIds = [];
         
         foreach ($_POST['item_sku'] as $key => $sku) {
             if (!empty($sku)) {
                 $productName = $_POST['item_product_name'][$key] ?? '';
+                $productType = $_POST['item_product_type'][$key] ?? '';
+                $itemCategoryId = is_array($_POST['category_id']) ? ($_POST['category_id'][$key] ?? $categoryId) : $categoryId;
+                $itemDescription = is_array($_POST['description']) ? ($_POST['description'][$key] ?? $description) : $description;
                 
                 $stmt->execute([
-                    $claimId, $sku, $productName
+                    $claimId, $sku, $productName, $productType, $itemCategoryId, $itemDescription
                 ]);
+                
+                $claimItemId = $conn->lastInsertId();
+                $claimItemIds[$key] = $claimItemId;
             }
         }
-    }
-    
-    // Process photo uploads
-    $photoUploadSuccess = processPhotoUploads($claimId, $conn);
-    if (!$photoUploadSuccess) {
-        // Rollback transaction if photo uploads fail
-        $conn->rollBack();
-        echo json_encode([
-            'success' => false,
-            'message' => 'Error processing photo uploads. Claim was not created.'
-        ]);
-        exit;
-    }
-    
-    // Process video uploads
-    $videoUploadSuccess = processVideoUploads($claimId, $conn);
-    if (!$videoUploadSuccess) {
-        // Rollback transaction if video uploads fail
-        $conn->rollBack();
-        echo json_encode([
-            'success' => false,
-            'message' => 'Error processing video uploads. Claim was not created.'
-        ]);
-        exit;
+        
+        // Process photo uploads for each item
+        $photoUploadSuccess = processPhotoUploads($claimId, $claimItemIds, $conn);
+        if (!$photoUploadSuccess) {
+            // Rollback transaction if photo uploads fail
+            $conn->rollBack();
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error processing photo uploads. Claim was not created.'
+            ]);
+            exit;
+        }
+        
+        // Process video uploads for each item
+        $videoUploadSuccess = processVideoUploads($claimId, $claimItemIds, $conn);
+        if (!$videoUploadSuccess) {
+            // Rollback transaction if video uploads fail
+            $conn->rollBack();
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error processing video uploads. Claim was not created.'
+            ]);
+            exit;
+        }
     }
     
     // Log claim creation
@@ -240,7 +299,8 @@ try {
         'category_id' => $categoryId,
         'category_name' => $categoryName,
         'status' => 'new',
-        'created_at' => date('Y-m-d H:i:s')
+        'created_at' => date('Y-m-d H:i:s'),
+        'claim_number' => $claimNumber
     ];
     
     // Return success response
@@ -289,6 +349,37 @@ function validatePhotoUploads() {
     $errors = [];
     $maxPhotoSize = 2 * 1024 * 1024; // 2MB in bytes
     
+    // Check for item-specific photos (photos_0, photos_1, etc.)
+    foreach ($_FILES as $fieldName => $fileData) {
+        if (strpos($fieldName, 'photos_') === 0 && !empty($fileData['name'][0])) {
+            $fileCount = count($fileData['name']);
+            
+            for ($i = 0; $i < $fileCount; $i++) {
+                if ($fileData['error'][$i] === UPLOAD_ERR_OK) {
+                    $originalName = $fileData['name'][$i];
+                    $fileSize = $fileData['size'][$i];
+                    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+                    
+                    // Check file size
+                    if ($fileSize > $maxPhotoSize) {
+                        $errors[] = "Photo '$originalName' exceeds the maximum size limit of 2MB.";
+                    }
+                    
+                    // Check if it's actually an image
+                    $allowedImageExtensions = ['jpg', 'jpeg', 'png', 'gif'];
+                    if (!in_array($extension, $allowedImageExtensions)) {
+                        $errors[] = "File '$originalName' is not a valid image format. Allowed formats: JPG, JPEG, PNG, GIF.";
+                    }
+                } elseif ($fileData['error'][$i] !== UPLOAD_ERR_NO_FILE) {
+                    // Handle upload errors
+                    $originalName = $fileData['name'][$i] ?? 'Unknown file';
+                    $errors[] = "Error uploading photo '$originalName': " . uploadErrorMessage($fileData['error'][$i]);
+                }
+            }
+        }
+    }
+    
+    // Check for general photos (backward compatibility)
     if (!empty($_FILES['photos']['name'][0])) {
         $fileCount = count($_FILES['photos']['name']);
         
@@ -296,10 +387,17 @@ function validatePhotoUploads() {
             if ($_FILES['photos']['error'][$i] === UPLOAD_ERR_OK) {
                 $originalName = $_FILES['photos']['name'][$i];
                 $fileSize = $_FILES['photos']['size'][$i];
+                $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
                 
                 // Check file size
                 if ($fileSize > $maxPhotoSize) {
                     $errors[] = "Photo '$originalName' exceeds the maximum size limit of 2MB.";
+                }
+                
+                // Check if it's actually an image
+                $allowedImageExtensions = ['jpg', 'jpeg', 'png', 'gif'];
+                if (!in_array($extension, $allowedImageExtensions)) {
+                    $errors[] = "File '$originalName' is not a valid image format. Allowed formats: JPG, JPEG, PNG, GIF.";
                 }
             } elseif ($_FILES['photos']['error'][$i] !== UPLOAD_ERR_NO_FILE) {
                 // Handle upload errors
@@ -322,6 +420,37 @@ function validateVideoUploads() {
     $allowedVideoTypes = ['video/mp4', 'video/quicktime']; // MP4 and MOV formats
     $allowedVideoExtensions = ['mp4', 'mov'];
     
+    // Check for item-specific videos (videos_0, videos_1, etc.)
+    foreach ($_FILES as $fieldName => $fileData) {
+        if (strpos($fieldName, 'videos_') === 0 && !empty($fileData['name'][0])) {
+            $fileCount = count($fileData['name']);
+            
+            for ($i = 0; $i < $fileCount; $i++) {
+                if ($fileData['error'][$i] === UPLOAD_ERR_OK) {
+                    $originalName = $fileData['name'][$i];
+                    $fileSize = $fileData['size'][$i];
+                    $fileType = $fileData['type'][$i];
+                    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+                    
+                    // Check file size
+                    if ($fileSize > $maxVideoSize) {
+                        $errors[] = "Video '$originalName' exceeds the maximum size limit of 10MB.";
+                    }
+                    
+                    // Check file type
+                    if (!in_array($fileType, $allowedVideoTypes) && !in_array($extension, $allowedVideoExtensions)) {
+                        $errors[] = "Video '$originalName' is not in an allowed format (MP4 or MOV).";
+                    }
+                } elseif ($fileData['error'][$i] !== UPLOAD_ERR_NO_FILE) {
+                    // Handle upload errors
+                    $originalName = $fileData['name'][$i] ?? 'Unknown file';
+                    $errors[] = "Error uploading video '$originalName': " . uploadErrorMessage($fileData['error'][$i]);
+                }
+            }
+        }
+    }
+    
+    // Check for general videos (backward compatibility)
     if (!empty($_FILES['videos']['name'][0])) {
         $fileCount = count($_FILES['videos']['name']);
         
@@ -330,7 +459,7 @@ function validateVideoUploads() {
                 $originalName = $_FILES['videos']['name'][$i];
                 $fileSize = $_FILES['videos']['size'][$i];
                 $fileType = $_FILES['videos']['type'][$i];
-                $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+                $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
                 
                 // Check file size
                 if ($fileSize > $maxVideoSize) {
@@ -338,12 +467,7 @@ function validateVideoUploads() {
                 }
                 
                 // Check file type
-                if (!in_array($fileType, $allowedVideoTypes)) {
-                    $errors[] = "Video '$originalName' is not in an allowed format (MP4 or MOV).";
-                }
-                
-                // Check file extension
-                if (!in_array(strtolower($extension), $allowedVideoExtensions)) {
+                if (!in_array($fileType, $allowedVideoTypes) && !in_array($extension, $allowedVideoExtensions)) {
                     $errors[] = "Video '$originalName' is not in an allowed format (MP4 or MOV).";
                 }
             } elseif ($_FILES['videos']['error'][$i] !== UPLOAD_ERR_NO_FILE) {
@@ -360,11 +484,80 @@ function validateVideoUploads() {
  * Process photo uploads
  * 
  * @param int $claimId Claim ID
+ * @param array $claimItemIds Claim item IDs
  * @param PDO $conn Database connection
  * @return bool True if successful, false otherwise
  */
-function processPhotoUploads($claimId, $conn) {
-    if (!empty($_FILES['photos']['name'][0])) {
+function processPhotoUploads($claimId, $claimItemIds, $conn) {
+    // Check if we have item-specific photos
+    $hasItemSpecificPhotos = false;
+    foreach ($_FILES as $fieldName => $fileData) {
+        if (strpos($fieldName, 'photos_') === 0 && !empty($fileData['name'][0])) {
+            $hasItemSpecificPhotos = true;
+            break;
+        }
+    }
+    
+    // If we have item-specific photos, process them
+    if ($hasItemSpecificPhotos) {
+        foreach ($_FILES as $fieldName => $fileData) {
+            if (strpos($fieldName, 'photos_') === 0 && !empty($fileData['name'][0])) {
+                // Extract the item index from the field name (photos_0, photos_1, etc.)
+                $itemIndex = substr($fieldName, 7);
+                
+                // Get the corresponding claim item ID
+                $claimItemId = isset($claimItemIds[$itemIndex]) ? $claimItemIds[$itemIndex] : null;
+                
+                if ($claimItemId) {
+                    $uploadDir = '../../uploads/claims/' . $claimId . '/items/' . $claimItemId . '/photos/';
+                    
+                    // Create directory if it doesn't exist
+                    if (!file_exists($uploadDir)) {
+                        if (!mkdir($uploadDir, 0755, true)) {
+                            error_log("Failed to create directory: $uploadDir");
+                            return false;
+                        }
+                    }
+                    
+                    $stmt = $conn->prepare("
+                        INSERT INTO claim_media (
+                            claim_id, claim_item_id, file_path, file_type, original_filename, file_size
+                        ) VALUES (
+                            ?, ?, ?, 'photo', ?, ?
+                        )
+                    ");
+                    
+                    $fileCount = count($fileData['name']);
+                    
+                    for ($i = 0; $i < $fileCount; $i++) {
+                        if ($fileData['error'][$i] === UPLOAD_ERR_OK) {
+                            $tmpName = $fileData['tmp_name'][$i];
+                            $originalName = $fileData['name'][$i];
+                            $fileSize = $fileData['size'][$i];
+                            
+                            // Generate a unique filename
+                            $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+                            $newFileName = uniqid('photo_') . '.' . $extension;
+                            $filePath = $uploadDir . $newFileName;
+                            
+                            // Move the uploaded file
+                            if (move_uploaded_file($tmpName, $filePath)) {
+                                $relativePath = 'uploads/claims/' . $claimId . '/items/' . $claimItemId . '/photos/' . $newFileName;
+                                
+                                $stmt->execute([
+                                    $claimId, $claimItemId, $relativePath, $originalName, $fileSize
+                                ]);
+                            } else {
+                                error_log("Failed to move uploaded file from $tmpName to $filePath");
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else if (!empty($_FILES['photos']['name'][0])) {
+        // Backward compatibility: process photos the old way
         $uploadDir = '../../uploads/claims/' . $claimId . '/photos/';
         
         // Create directory if it doesn't exist
@@ -376,9 +569,9 @@ function processPhotoUploads($claimId, $conn) {
         
         $stmt = $conn->prepare("
             INSERT INTO claim_media (
-                claim_id, file_path, file_type, original_filename, file_size
+                claim_id, claim_item_id, file_path, file_type, original_filename, file_size
             ) VALUES (
-                ?, ?, 'photo', ?, ?
+                ?, ?, ?, 'photo', ?, ?
             )
         ");
         
@@ -399,8 +592,11 @@ function processPhotoUploads($claimId, $conn) {
                 if (move_uploaded_file($tmpName, $filePath)) {
                     $relativePath = 'uploads/claims/' . $claimId . '/photos/' . $newFileName;
                     
+                    // Use the first claim item ID for backward compatibility
+                    $firstClaimItemId = !empty($claimItemIds) ? reset($claimItemIds) : null;
+                    
                     $stmt->execute([
-                        $claimId, $relativePath, $originalName, $fileSize
+                        $claimId, $firstClaimItemId, $relativePath, $originalName, $fileSize
                     ]);
                 } else {
                     return false;
@@ -416,11 +612,80 @@ function processPhotoUploads($claimId, $conn) {
  * Process video uploads
  * 
  * @param int $claimId Claim ID
+ * @param array $claimItemIds Claim item IDs
  * @param PDO $conn Database connection
  * @return bool True if successful, false otherwise
  */
-function processVideoUploads($claimId, $conn) {
-    if (!empty($_FILES['videos']['name'][0])) {
+function processVideoUploads($claimId, $claimItemIds, $conn) {
+    // Check if we have item-specific videos
+    $hasItemSpecificVideos = false;
+    foreach ($_FILES as $fieldName => $fileData) {
+        if (strpos($fieldName, 'videos_') === 0 && !empty($fileData['name'][0])) {
+            $hasItemSpecificVideos = true;
+            break;
+        }
+    }
+    
+    // If we have item-specific videos, process them
+    if ($hasItemSpecificVideos) {
+        foreach ($_FILES as $fieldName => $fileData) {
+            if (strpos($fieldName, 'videos_') === 0 && !empty($fileData['name'][0])) {
+                // Extract the item index from the field name (videos_0, videos_1, etc.)
+                $itemIndex = substr($fieldName, 7);
+                
+                // Get the corresponding claim item ID
+                $claimItemId = isset($claimItemIds[$itemIndex]) ? $claimItemIds[$itemIndex] : null;
+                
+                if ($claimItemId) {
+                    $uploadDir = '../../uploads/claims/' . $claimId . '/items/' . $claimItemId . '/videos/';
+                    
+                    // Create directory if it doesn't exist
+                    if (!file_exists($uploadDir)) {
+                        if (!mkdir($uploadDir, 0755, true)) {
+                            error_log("Failed to create directory: $uploadDir");
+                            return false;
+                        }
+                    }
+                    
+                    $stmt = $conn->prepare("
+                        INSERT INTO claim_media (
+                            claim_id, claim_item_id, file_path, file_type, original_filename, file_size
+                        ) VALUES (
+                            ?, ?, ?, 'video', ?, ?
+                        )
+                    ");
+                    
+                    $fileCount = count($fileData['name']);
+                    
+                    for ($i = 0; $i < $fileCount; $i++) {
+                        if ($fileData['error'][$i] === UPLOAD_ERR_OK) {
+                            $tmpName = $fileData['tmp_name'][$i];
+                            $originalName = $fileData['name'][$i];
+                            $fileSize = $fileData['size'][$i];
+                            
+                            // Generate a unique filename
+                            $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+                            $newFileName = uniqid('video_') . '.' . $extension;
+                            $filePath = $uploadDir . $newFileName;
+                            
+                            // Move the uploaded file
+                            if (move_uploaded_file($tmpName, $filePath)) {
+                                $relativePath = 'uploads/claims/' . $claimId . '/items/' . $claimItemId . '/videos/' . $newFileName;
+                                
+                                $stmt->execute([
+                                    $claimId, $claimItemId, $relativePath, $originalName, $fileSize
+                                ]);
+                            } else {
+                                error_log("Failed to move uploaded file from $tmpName to $filePath");
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else if (!empty($_FILES['videos']['name'][0])) {
+        // Backward compatibility: process videos the old way
         $uploadDir = '../../uploads/claims/' . $claimId . '/videos/';
         
         // Create directory if it doesn't exist
@@ -432,9 +697,9 @@ function processVideoUploads($claimId, $conn) {
         
         $stmt = $conn->prepare("
             INSERT INTO claim_media (
-                claim_id, file_path, file_type, original_filename, file_size
+                claim_id, claim_item_id, file_path, file_type, original_filename, file_size
             ) VALUES (
-                ?, ?, 'video', ?, ?
+                ?, ?, ?, 'video', ?, ?
             )
         ");
         
@@ -455,8 +720,11 @@ function processVideoUploads($claimId, $conn) {
                 if (move_uploaded_file($tmpName, $filePath)) {
                     $relativePath = 'uploads/claims/' . $claimId . '/videos/' . $newFileName;
                     
+                    // Use the first claim item ID for backward compatibility
+                    $firstClaimItemId = !empty($claimItemIds) ? reset($claimItemIds) : null;
+                    
                     $stmt->execute([
-                        $claimId, $relativePath, $originalName, $fileSize
+                        $claimId, $firstClaimItemId, $relativePath, $originalName, $fileSize
                     ]);
                 } else {
                     return false;

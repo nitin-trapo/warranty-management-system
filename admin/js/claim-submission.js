@@ -3,6 +3,231 @@
  * Claim Submission JavaScript
  */
 
+// Global function to handle checkbox clicks - must be accessible from inline handlers
+function itemCheckboxClicked(checkbox) {
+    console.log('Checkbox clicked via inline handler:', checkbox.id, 'Checked:', checkbox.checked);
+    
+    // Highlight the selected item card
+    const card = checkbox.closest('.card');
+    if (card) {
+        if (checkbox.checked) {
+            card.classList.add('border-primary');
+            card.classList.remove('border-success', 'border-danger');
+        } else {
+            // Restore original border
+            if (card.classList.contains('border-danger')) {
+                card.classList.add('border-danger');
+            } else {
+                card.classList.add('border-success');
+            }
+            card.classList.remove('border-primary');
+        }
+    }
+    
+    // Validate selection and generate forms
+    validateItemSelection();
+    generateItemForms();
+}
+
+// Global function to generate item forms - must be accessible from inline handlers
+function generateItemForms() {
+    console.log('Generating item forms for selected items');
+    
+    // Clear any existing form containers first
+    const itemsContainer = document.getElementById('selected_items_container');
+    if (!itemsContainer) {
+        console.error('Selected items container not found!');
+        return;
+    }
+    
+    // Clear the container
+    itemsContainer.innerHTML = '';
+    
+    // Get selected items
+    const selectedItems = document.querySelectorAll('.item-checkbox:checked');
+    console.log('Selected items count:', selectedItems.length);
+    
+    if (selectedItems.length === 0) {
+        // Show a message when no items are selected
+        itemsContainer.innerHTML = '<div class="alert alert-warning mt-3">Please select at least one item to generate claim details.</div>';
+        return;
+    }
+    
+    // Get categories from PHP variable passed to window object
+    const categories = window.claimCategories || [];
+    
+    // Get order number for claim number generation
+    const orderId = document.getElementById('claim_order_id').value;
+    // Extract numeric part from order ID (e.g., TMR-O335533 -> 335533)
+    const orderMatch = orderId.match(/[A-Za-z]?(\d+)/);
+    const orderNum = orderMatch && orderMatch[1] ? orderMatch[1] : '';
+    
+    console.log('Order ID:', orderId, 'Extracted order number:', orderNum);
+    
+    // For each selected item, create a form section
+    selectedItems.forEach(function(item, index) {
+        // Get data attributes
+        const sku = item.getAttribute('data-sku');
+        const productName = item.getAttribute('data-product-name');
+        const productType = item.getAttribute('data-product-type');
+        
+        // Generate a claim number
+        const claimNum = `CLAIM-${orderNum}-${sku.substring(0, 4).toUpperCase()}`;
+        
+        // Create form section
+        const formSection = document.createElement('div');
+        formSection.className = 'item-form bg-light p-3 mb-3 border rounded';
+        
+        formSection.innerHTML = `
+            <h5 class="border-bottom pb-2 mb-3 text-primary">Item: ${productName}</h5>
+            <input type="hidden" name="item_sku[]" value="${sku}">
+            <input type="hidden" name="item_product_name[]" value="${productName}">
+            <input type="hidden" name="item_product_type[]" value="${productType}">
+            <input type="hidden" name="claim_number[]" value="${claimNum}">
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <p><strong>SKU:</strong> ${sku} <span class="mx-3">|</span> <strong>Product Type:</strong> ${productType || 'N/A'}</p>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Claim Category</label>
+                    <select class="form-select" name="category_id[]" required>
+                        <option value="">Select Category</option>
+                        ${categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label fw-bold">Description</label>
+                    <textarea class="form-control" name="description[]" rows="3" required placeholder="Describe the issue..."></textarea>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-bold">Photos</label>
+                    <input type="file" class="form-control" name="photos_${index}[]" multiple accept="image/*">
+                    <div class="form-text">Max size: 2MB per image</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-bold">Videos</label>
+                    <input type="file" class="form-control" name="videos_${index}[]" multiple accept="video/mp4,video/quicktime">
+                    <div class="form-text">Max size: 10MB (MP4/MOV only)</div>
+                </div>
+            </div>
+        `;
+        
+        // Add to container
+        itemsContainer.appendChild(formSection);
+    });
+    
+    // Add delivery date hidden field
+    const orderData = window.orderData || {};
+    if (orderData.order) {
+        const deliveryDate = orderData.order.delivery_date || orderData.order.order_date || '';
+        const dateInput = document.createElement('input');
+        dateInput.type = 'hidden';
+        dateInput.name = 'delivery_date';
+        dateInput.value = deliveryDate;
+        itemsContainer.appendChild(dateInput);
+    }
+    
+    console.log('Item forms generated successfully');
+}
+
+// Function to validate item selection
+function validateItemSelection() {
+    const selectedItems = document.querySelectorAll('.item-checkbox:checked');
+    const noItemsWarning = document.getElementById('noItemsWarning');
+    
+    if (selectedItems.length === 0) {
+        if (noItemsWarning) noItemsWarning.style.display = 'block';
+        return false;
+    } else {
+        if (noItemsWarning) noItemsWarning.style.display = 'none';
+        return true;
+    }
+}
+
+// Function to validate file uploads
+function validateFileUploads() {
+    console.log('Validating file uploads');
+    
+    // Constants for file size limits
+    const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB in bytes
+    const MAX_VIDEO_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+    
+    // Allowed video formats
+    const ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'mov'];
+    
+    // Get error container
+    const errorContainer = document.getElementById('file-upload-errors');
+    if (!errorContainer) {
+        console.error('File upload error container not found');
+        return false;
+    }
+    
+    // Clear previous errors
+    errorContainer.innerHTML = '';
+    errorContainer.style.display = 'none';
+    
+    // Get all file inputs
+    const photoInputs = document.querySelectorAll('input[type="file"][name^="photos_"]');
+    const videoInputs = document.querySelectorAll('input[type="file"][name^="videos_"]');
+    
+    let errors = [];
+    
+    // Validate photo uploads
+    photoInputs.forEach(input => {
+        if (input.files.length > 0) {
+            for (let i = 0; i < input.files.length; i++) {
+                const file = input.files[i];
+                
+                // Check file size
+                if (file.size > MAX_PHOTO_SIZE) {
+                    errors.push(`Photo "${file.name}" exceeds the maximum size limit of 2MB.`);
+                }
+            }
+        }
+    });
+    
+    // Validate video uploads
+    videoInputs.forEach(input => {
+        if (input.files.length > 0) {
+            for (let i = 0; i < input.files.length; i++) {
+                const file = input.files[i];
+                
+                // Check file size
+                if (file.size > MAX_VIDEO_SIZE) {
+                    errors.push(`Video "${file.name}" exceeds the maximum size limit of 10MB.`);
+                }
+                
+                // Check file extension
+                const extension = file.name.split('.').pop().toLowerCase();
+                if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
+                    errors.push(`Video "${file.name}" is not in an allowed format (MP4 or MOV only).`);
+                }
+            }
+        }
+    });
+    
+    // Display errors if any
+    if (errors.length > 0) {
+        errorContainer.innerHTML = '<strong>File Upload Errors:</strong><ul>' + 
+            errors.map(error => `<li>${error}</li>`).join('') + 
+            '</ul>';
+        errorContainer.style.display = 'block';
+        
+        // Scroll to error container
+        errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return false;
+    }
+    
+    return true;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Claim Submission JS Loaded');
     
@@ -109,39 +334,33 @@ document.addEventListener('DOMContentLoaded', function() {
                     const itemSelectionDiv = document.getElementById('item_selection');
                     itemSelectionDiv.innerHTML = data.items_html;
                     
-                    // Add event listeners to radio buttons
-                    const radioButtons = document.querySelectorAll('input[name="claim_items"]');
-                    radioButtons.forEach(radio => {
-                        radio.addEventListener('change', function() {
-                            validateItemSelection();
+                    // Use event delegation for checkbox clicks
+                    itemSelectionDiv.addEventListener('click', function(e) {
+                        // Check if the clicked element is a checkbox
+                        if (e.target && e.target.classList.contains('item-checkbox')) {
+                            console.log('Checkbox clicked via delegation:', e.target.id, 'Checked:', e.target.checked);
                             
-                            // When an item is selected, add it to the form
-                            if (this.checked) {
-                                const itemIndex = parseInt(this.value);
-                                const item = data.order.items[itemIndex];
-                                
-                                // Create hidden inputs for the selected item
-                                let itemInputs = `
-                                    <input type="hidden" name="item_sku[]" value="${item.sku}">
-                                    <input type="hidden" name="item_product_name[]" value="${item.product_name}">
-                                    <input type="hidden" name="item_product_type[]" value="${item.product_type || ''}">
-                                    <input type="hidden" name="delivery_date" value="${data.order.delivery_date || data.order.order_date}">
-                                `;
-                                
-                                // Clear previous selections and add new one
-                                const hiddenItemsContainer = document.getElementById('hidden_items_container');
-                                if (hiddenItemsContainer) {
-                                    hiddenItemsContainer.innerHTML = itemInputs;
+                            // Highlight the selected item card
+                            const card = e.target.closest('.card');
+                            if (card) {
+                                if (e.target.checked) {
+                                    card.classList.add('border-primary');
+                                    card.classList.remove('border-success', 'border-danger');
+                                } else {
+                                    // Restore original border
+                                    if (card.classList.contains('border-danger')) {
+                                        card.classList.add('border-danger');
+                                    } else {
+                                        card.classList.add('border-success');
+                                    }
+                                    card.classList.remove('border-primary');
                                 }
-                                
-                                // Log to console for debugging
-                                console.log('Customer data set:', {
-                                    name: document.getElementById('customer_name_input').value,
-                                    email: document.getElementById('customer_email_input').value,
-                                    phone: document.getElementById('customer_phone_input').value
-                                });
                             }
-                        });
+                            
+                            // Update the form when checkbox state changes
+                            validateItemSelection();
+                            generateItemForms();
+                        }
                     });
                 } else {
                     // Display error message
@@ -251,7 +470,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 // Validate form before submission
-                if (validateItemSelection() && validateCustomerInfo()) {
+                if (validateItemSelection() && validateCustomerInfo() && validateFileUploads()) {
                     // Submit form via AJAX
                     const formData = new FormData(claimForm);
                     
@@ -423,20 +642,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Function to validate item selection
-    function validateItemSelection() {
-        const radioButtons = document.querySelectorAll('input[name="claim_items"]:checked');
-        const valid = radioButtons.length > 0;
-        
-        if (!valid) {
-            noItemsWarning.style.display = 'block';
-        } else {
-            noItemsWarning.style.display = 'none';
-        }
-        
-        return valid;
-    }
-    
     // Function to validate customer information
     function validateCustomerInfo() {
         const customerName = document.getElementById('customer_name_input');
@@ -511,17 +716,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const claimForm = document.getElementById('claimForm');
     if (claimForm) {
         claimForm.addEventListener('submit', function(e) {
-            // Get customer information fields
-            const customerName = document.getElementById('customer_name_input');
-            const customerEmail = document.getElementById('customer_email_input');
-            const customerPhone = document.getElementById('customer_phone_input');
+            // Prevent default form submission
+            e.preventDefault();
             
-            // Log customer data before submission
-            console.log('Customer data before form submission:', {
-                name: customerName ? customerName.value : 'not found',
-                email: customerEmail ? customerEmail.value : 'not found',
-                phone: customerPhone ? customerPhone.value : 'not found'
-            });
+            // Validate item selection
+            if (!validateItemSelection()) {
+                alert('Please select at least one item for the warranty claim.');
+                return false;
+            }
+            
+            // Validate file uploads
+            if (!validateFileUploads()) {
+                return false;
+            }
+            
+            // If all validations pass, submit the form
+            this.submit();
         });
     }
 });
