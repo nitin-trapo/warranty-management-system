@@ -288,8 +288,8 @@ if (isLoggedIn()) {
     
     <div class="login-container">
         <div class="login-sidebar">
-            <h1>Warranty Management System</h1>
-            <p>Streamline your warranty claims process with our comprehensive management solution. Validate customer purchases, manage warranty claims, and track claim resolutions efficiently.</p>
+            <h1> TRAPO Warranty Management System</h1>
+            <p>Streamline your warranty claims process. Validate customer purchases, manage warranty claims, and track claim resolutions efficiently.</p>
             <div class="mt-4">
                 <i class="fas fa-shield-alt fa-2x me-2"></i>
                 <i class="fas fa-clipboard-check fa-2x me-2"></i>

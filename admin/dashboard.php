@@ -37,16 +37,41 @@ try {
     }
     
     // Recent claims
-    $stmt = $conn->query("SELECT c.*, u.first_name, u.last_name, cat.name as category_name 
+    $stmt = $conn->query("SELECT c.*, cc.name as category_name, cc.sla_days 
                          FROM claims c 
-                         LEFT JOIN users u ON c.created_by = u.id 
-                         LEFT JOIN categories cat ON c.category_id = cat.id 
+                         LEFT JOIN claim_categories cc ON c.category_id = cc.id 
                          ORDER BY c.created_at DESC LIMIT 5");
     $recentClaims = $stmt->fetchAll();
     
-    // SLA breaches
-    $stmt = $conn->query("SELECT COUNT(*) as total FROM sla_breach_logs WHERE resolved = 0");
+    // Calculate SLA breaches
+    $currentDate = new DateTime();
+    $slaBreachQuery = "SELECT COUNT(*) as total FROM claims c 
+                      LEFT JOIN claim_categories cc ON c.category_id = cc.id 
+                      WHERE c.status NOT IN ('approved', 'rejected') 
+                      AND DATE_ADD(c.created_at, INTERVAL cc.sla_days DAY) < NOW()";
+    $stmt = $conn->query($slaBreachQuery);
     $slaBreaches = $stmt->fetch()['total'] ?? 0;
+    
+    // Claims by category
+    $categoryQuery = "SELECT cc.name, COUNT(*) as count 
+                     FROM claims c 
+                     LEFT JOIN claim_categories cc ON c.category_id = cc.id 
+                     GROUP BY c.category_id 
+                     ORDER BY count DESC";
+    $stmt = $conn->query($categoryQuery);
+    $claimsByCategory = $stmt->fetchAll();
+    
+    // Claims created today
+    $todayQuery = "SELECT COUNT(*) as total FROM claims WHERE DATE(created_at) = CURDATE()";
+    $stmt = $conn->query($todayQuery);
+    $claimsToday = $stmt->fetch()['total'] ?? 0;
+    
+    // Claims resolved today
+    $resolvedTodayQuery = "SELECT COUNT(*) as total FROM claims 
+                          WHERE DATE(updated_at) = CURDATE() 
+                          AND status IN ('approved', 'rejected')";
+    $stmt = $conn->query($resolvedTodayQuery);
+    $resolvedToday = $stmt->fetch()['total'] ?? 0;
     
 } catch (PDOException $e) {
     // Log error
@@ -63,6 +88,9 @@ try {
     ];
     $recentClaims = [];
     $slaBreaches = 0;
+    $claimsByCategory = [];
+    $claimsToday = 0;
+    $resolvedToday = 0;
 }
 ?>
 
@@ -267,11 +295,9 @@ try {
                             <thead>
                                 <tr>
                                     <th>ID</th>
-                                    <th>Order ID</th>
                                     <th>Category</th>
                                     <th>Status</th>
-                                    <th>Created By</th>
-                                    <th>Date</th>
+                                    <th>Created At</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -279,7 +305,6 @@ try {
                                 <?php foreach ($recentClaims as $claim): ?>
                                     <tr>
                                         <td><?php echo $claim['id']; ?></td>
-                                        <td><?php echo htmlspecialchars($claim['order_id']); ?></td>
                                         <td><?php echo htmlspecialchars($claim['category_name']); ?></td>
                                         <td>
                                             <?php
@@ -308,7 +333,6 @@ try {
                                                 <?php echo ucfirst(str_replace('_', ' ', $claim['status'])); ?>
                                             </span>
                                         </td>
-                                        <td><?php echo htmlspecialchars($claim['first_name'] . ' ' . $claim['last_name']); ?></td>
                                         <td><?php echo date('d M Y', strtotime($claim['created_at'])); ?></td>
                                         <td>
                                             <a href="claims.php?action=view&id=<?php echo $claim['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-1" data-bs-toggle="tooltip" title="View Claim">
@@ -393,38 +417,89 @@ try {
     </div>
 </div>
 
+<!-- Claims by Category -->
+<div class="row">
+    <div class="col-lg-12 mb-3">
+        <div class="card h-100">
+            <div class="card-header py-2">
+                <h6 class="mb-0">Claims by Category</h6>
+            </div>
+            <div class="card-body p-2">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Claims</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($claimsByCategory as $category): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($category['name']); ?></td>
+                                    <td><?php echo $category['count']; ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Claims Today & Resolved Today -->
+<div class="row">
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header py-2">
+                <h6 class="mb-0">Claims Created Today</h6>
+            </div>
+            <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-title small">Claims Created Today</div>
+                        <div class="stat-value h4 mb-0"><?php echo number_format($claimsToday); ?></div>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-plus-circle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header py-2">
+                <h6 class="mb-0">Claims Resolved Today</h6>
+            </div>
+            <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-title small">Claims Resolved Today</div>
+                        <div class="stat-value h4 mb-0"><?php echo number_format($resolvedToday); ?></div>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // Initialize claims chart
 document.addEventListener('DOMContentLoaded', function() {
-    // Update current time
-    function updateTime() {
-        const now = new Date();
-        let hours = now.getHours();
-        let minutes = now.getMinutes();
-        let seconds = now.getSeconds();
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        
-        hours = hours % 12;
-        hours = hours ? hours : 12;
-        minutes = minutes < 10 ? '0' + minutes : minutes;
-        seconds = seconds < 10 ? '0' + seconds : seconds;
-        
-        const timeString = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
-        document.getElementById('time-display').textContent = timeString;
-        
-        setTimeout(updateTime, 1000);
-    }
-    
-    // Initialize time
-    updateTime();
-    
-    // Claims chart
-    const ctx = document.getElementById('claimsChart').getContext('2d');
-    const claimsChart = new Chart(ctx, {
-        type: 'doughnut',
+    // Set up the claims chart
+    var ctx = document.getElementById('claimsChart').getContext('2d');
+    var claimsChart = new Chart(ctx, {
+        type: 'bar',
         data: {
             labels: ['New', 'In Progress', 'On Hold', 'Approved', 'Rejected'],
             datasets: [{
+                label: 'Claims by Status',
                 data: [
                     <?php echo $statusCounts['new']; ?>,
                     <?php echo $statusCounts['in_progress']; ?>,
@@ -433,11 +508,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <?php echo $statusCounts['rejected']; ?>
                 ],
                 backgroundColor: [
-                    '#0dcaf0', // info
-                    '#0d6efd', // primary
-                    '#ffc107', // warning
-                    '#198754', // success
-                    '#dc3545'  // danger
+                    '#36a2eb', // info (new)
+                    '#4e73df', // primary (in progress)
+                    '#f6c23e', // warning (on hold)
+                    '#1cc88a', // success (approved)
+                    '#e74a3b'  // danger (rejected)
                 ],
                 borderWidth: 1
             }]
@@ -445,18 +520,47 @@ document.addEventListener('DOMContentLoaded', function() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        font: {
-                            size: 11
-                        }
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
                     }
                 }
             },
-            cutout: '65%'
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
         }
+    });
+    
+    // Update the time display
+    function updateTime() {
+        var now = new Date();
+        var hours = now.getHours();
+        var minutes = now.getMinutes();
+        var seconds = now.getSeconds();
+        var ampm = hours >= 12 ? 'PM' : 'AM';
+        
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        minutes = minutes < 10 ? '0' + minutes : minutes;
+        seconds = seconds < 10 ? '0' + seconds : seconds;
+        
+        var timeString = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
+        document.getElementById('time-display').textContent = timeString;
+    }
+    
+    // Update time immediately and then every second
+    updateTime();
+    setInterval(updateTime, 1000);
+    
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
     });
 });
 </script>
