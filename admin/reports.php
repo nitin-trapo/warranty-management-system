@@ -200,6 +200,87 @@ try {
         $claimsByCategorySku = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
+    // Data for monthly category analysis
+    if ($reportType == 'monthly_category') {
+        // Get all categories
+        $categoriesQuery = "SELECT id, name FROM claim_categories ORDER BY name";
+        $stmt = $conn->prepare($categoriesQuery);
+        $stmt->execute();
+        $allCategories = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Get all months between start and end date
+        $start = new DateTime($startDate);
+        $end = new DateTime($endDate);
+        $interval = DateInterval::createFromDateString('1 month');
+        $period = new DatePeriod($start, $interval, $end);
+        
+        $months = [];
+        foreach ($period as $dt) {
+            $months[] = $dt->format('Y-m');
+        }
+        // Add the last month if not already included
+        $lastMonth = $end->format('Y-m');
+        if (!in_array($lastMonth, $months)) {
+            $months[] = $lastMonth;
+        }
+        
+        // Get claims by category and month
+        $monthlyDataQuery = "SELECT 
+                                cc.id as category_id,
+                                cc.name as category_name,
+                                DATE_FORMAT(c.created_at, '%Y-%m') as month,
+                                COUNT(*) as claim_count
+                            FROM claim_items ci
+                            JOIN claims c ON ci.claim_id = c.id
+                            JOIN claim_categories cc ON ci.category_id = cc.id
+                            WHERE c.created_at BETWEEN ? AND ?
+                            GROUP BY cc.id, DATE_FORMAT(c.created_at, '%Y-%m')
+                            ORDER BY cc.name, month";
+        $stmt = $conn->prepare($monthlyDataQuery);
+        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        $monthlyData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Format data for display
+        $formattedData = [];
+        foreach ($allCategories as $category) {
+            $formattedData[$category['id']] = [
+                'name' => $category['name'],
+                'months' => []
+            ];
+            
+            // Initialize with zero for all months
+            foreach ($months as $month) {
+                $formattedData[$category['id']]['months'][$month] = 0;
+            }
+        }
+        
+        // Fill in actual data
+        foreach ($monthlyData as $item) {
+            $categoryId = $item['category_id'];
+            $month = $item['month'];
+            $count = $item['claim_count'];
+            
+            if (isset($formattedData[$categoryId]) && isset($formattedData[$categoryId]['months'][$month])) {
+                $formattedData[$categoryId]['months'][$month] = $count;
+            }
+        }
+        
+        // Calculate monthly totals
+        $monthlyTotals = [];
+        foreach ($months as $month) {
+            $monthlyTotals[$month] = 0;
+        }
+        
+        foreach ($formattedData as $categoryData) {
+            foreach ($categoryData['months'] as $month => $count) {
+                $monthlyTotals[$month] += $count;
+            }
+        }
+        
+        // Calculate grand total
+        $grandTotal = array_sum($monthlyTotals);
+    }
+    
 } catch (PDOException $e) {
     // Log error
     error_log("Error generating reports: " . $e->getMessage());
@@ -224,6 +305,7 @@ try {
                     <option value="sku_analysis" <?php echo $reportType == 'sku_analysis' ? 'selected' : ''; ?>>SKU Analysis</option>
                     <option value="product_type" <?php echo $reportType == 'product_type' ? 'selected' : ''; ?>>Product Type Analysis</option>
                     <option value="category_analysis" <?php echo $reportType == 'category_analysis' ? 'selected' : ''; ?>>Category Analysis</option>
+                    <option value="monthly_category" <?php echo $reportType == 'monthly_category' ? 'selected' : ''; ?>>Monthly Category Analysis</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -613,6 +695,64 @@ try {
 </div>
 <?php endif; ?>
 
+<!-- Monthly Category Analysis Report -->
+<?php if ($reportType == 'monthly_category'): ?>
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Monthly Category-Based Claim Analysis</h5>
+                <small class="text-muted"><?php echo date('M d, Y', strtotime($startDate)); ?> - <?php echo date('M d, Y', strtotime($endDate)); ?></small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Claims by Category and Month -->
+                    <div class="col-md-12 mb-5">
+                        <h6 class="border-bottom pb-2 mb-3">Claims by Category and Month</h6>
+                        <div class="chart-container mb-4" style="position: relative; height:400px;">
+                            <canvas id="monthlyCategoryChart"></canvas>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm report-table">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <?php foreach ($months as $month): ?>
+                                        <th><?php echo date('M Y', strtotime($month)); ?></th>
+                                        <?php endforeach; ?>
+                                        <th>Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($formattedData as $categoryData): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($categoryData['name']); ?></td>
+                                        <?php foreach ($months as $month): ?>
+                                        <td><?php echo $categoryData['months'][$month]; ?></td>
+                                        <?php endforeach; ?>
+                                        <td><?php echo array_sum($categoryData['months']); ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                                <tfoot>
+                                    <tr class="table-primary fw-bold">
+                                        <td>Total</td>
+                                        <?php foreach ($monthlyTotals as $total): ?>
+                                        <td><?php echo $total; ?></td>
+                                        <?php endforeach; ?>
+                                        <td><?php echo $grandTotal; ?></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <?php endif; ?>
 
 <!-- Chart.js -->
@@ -645,10 +785,72 @@ try {
                     text: '<i class="fas fa-file-excel"></i> Export to Excel',
                     className: 'btn btn-sm btn-success',
                     exportOptions: {
-                        columns: ':visible'
+                        columns: ':visible',
+                        format: {
+                            body: function (data, row, column, node) {
+                                // Convert any HTML to plain text for export
+                                return data.replace(/<[^>]*>/g, '');
+                            }
+                        },
+                        footer: true
                     },
                     title: function() {
                         return '<?php echo $pageTitle; ?> (<?php echo date('M d, Y', strtotime($startDate)); ?> - <?php echo date('M d, Y', strtotime($endDate)); ?>)';
+                    },
+                    customize: function(xlsx) {
+                        var sheet = xlsx.xl.worksheets['sheet1.xml'];
+                        
+                        // Get the last row number
+                        var lastRow = $('row', sheet).length;
+                        
+                        // Check if the last row is already a total row
+                        var lastRowElement = $('row:last', sheet);
+                        var firstCell = $('c:first', lastRowElement);
+                        var firstCellValue = firstCell.find('t').text();
+                        
+                        // If the last row is already a total row, don't add another one
+                        if (firstCellValue === 'Total') {
+                            return;
+                        }
+                        
+                        // Get the number of columns
+                        var colCount = $('row:first c', sheet).length;
+                        
+                        // Create a new row element for totals
+                        var totalsRow = '<row r="' + (lastRow + 1) + '">';
+                        
+                        // First column is "Total"
+                        totalsRow += '<c t="inlineStr" r="A' + (lastRow + 1) + '" s="2"><is><t>Total</t></is></c>';
+                        
+                        // Calculate totals for each column
+                        for (var i = 1; i < colCount; i++) {
+                            var colLetter = String.fromCharCode(65 + i); // Convert 1 to B, 2 to C, etc.
+                            var columnTotal = 0;
+                            
+                            // Sum all values in the column
+                            for (var row = 2; row <= lastRow; row++) {
+                                var cellSelector = 'row[r="' + row + '"] c[r="' + colLetter + row + '"]';
+                                var cell = $(cellSelector, sheet);
+                                
+                                if (cell.length > 0) {
+                                    // Get the value - could be in <v> (value) or <t> (text) element
+                                    var value = cell.find('v').text() || cell.find('t').text();
+                                    
+                                    // Only add if it's a number
+                                    if (value && !isNaN(value)) {
+                                        columnTotal += parseInt(value, 10);
+                                    }
+                                }
+                            }
+                            
+                            // Add the total as a static value
+                            totalsRow += '<c r="' + colLetter + (lastRow + 1) + '" t="n" s="2"><v>' + columnTotal + '</v></c>';
+                        }
+                        
+                        totalsRow += '</row>';
+                        
+                        // Append the totals row to the sheet
+                        sheet.childNodes[0].childNodes[1].innerHTML += totalsRow;
                     }
                 }
             ],
@@ -910,6 +1112,48 @@ try {
                     borderColor: 'rgba(13, 110, 253, 1)',
                     borderWidth: 1
                 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        });
+        <?php endif; ?>
+        
+        <?php if ($reportType == 'monthly_category'): ?>
+        // Monthly Category Chart
+        const monthlyCategoryCtx = document.getElementById('monthlyCategoryChart').getContext('2d');
+        const monthlyCategoryChart = new Chart(monthlyCategoryCtx, {
+            type: 'bar',
+            data: {
+                labels: [
+                    <?php foreach ($months as $month): ?>
+                    '<?php echo date('M Y', strtotime($month)); ?>',
+                    <?php endforeach; ?>
+                ],
+                datasets: [
+                    <?php foreach ($formattedData as $categoryData): ?>
+                    {
+                        label: '<?php echo htmlspecialchars($categoryData['name']); ?>',
+                        data: [
+                            <?php foreach ($months as $month): ?>
+                            <?php echo $categoryData['months'][$month]; ?>,
+                            <?php endforeach; ?>
+                        ],
+                        backgroundColor: 'rgba(<?php echo rand(0, 255); ?>, <?php echo rand(0, 255); ?>, <?php echo rand(0, 255); ?>, 0.7)',
+                        borderColor: 'rgba(<?php echo rand(0, 255); ?>, <?php echo rand(0, 255); ?>, <?php echo rand(0, 255); ?>, 1)',
+                        borderWidth: 1
+                    },
+                    <?php endforeach; ?>
+                ]
             },
             options: {
                 responsive: true,
