@@ -37,26 +37,31 @@ try {
     }
     
     // Recent claims
-    $stmt = $conn->query("SELECT c.*, cc.name as category_name, cc.sla_days 
+    $stmt = $conn->query("SELECT c.*, ci.category_id, cc.name as category_name, cc.sla_days 
                          FROM claims c 
-                         LEFT JOIN claim_categories cc ON c.category_id = cc.id 
+                         LEFT JOIN claim_items ci ON c.id = ci.claim_id
+                         LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
+                         GROUP BY c.id
                          ORDER BY c.created_at DESC LIMIT 5");
     $recentClaims = $stmt->fetchAll();
     
     // Calculate SLA breaches
     $currentDate = new DateTime();
     $slaBreachQuery = "SELECT COUNT(*) as total FROM claims c 
-                      LEFT JOIN claim_categories cc ON c.category_id = cc.id 
+                      LEFT JOIN claim_items ci ON c.id = ci.claim_id
+                      LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
                       WHERE c.status NOT IN ('approved', 'rejected') 
-                      AND DATE_ADD(c.created_at, INTERVAL cc.sla_days DAY) < NOW()";
+                      AND DATE_ADD(c.created_at, INTERVAL IFNULL(cc.sla_days, 7) DAY) < NOW()";
     $stmt = $conn->query($slaBreachQuery);
     $slaBreaches = $stmt->fetch()['total'] ?? 0;
     
     // Claims by category
     $categoryQuery = "SELECT cc.name, COUNT(*) as count 
                      FROM claims c 
-                     LEFT JOIN claim_categories cc ON c.category_id = cc.id 
-                     GROUP BY c.category_id 
+                     LEFT JOIN claim_items ci ON c.id = ci.claim_id
+                     LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
+                     WHERE cc.name IS NOT NULL
+                     GROUP BY cc.name 
                      ORDER BY count DESC";
     $stmt = $conn->query($categoryQuery);
     $claimsByCategory = $stmt->fetchAll();
