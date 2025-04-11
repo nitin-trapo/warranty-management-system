@@ -228,12 +228,8 @@ try {
                         <td><?php echo date('M d, Y', strtotime($claim['delivery_date'])); ?></td>
                     </tr>
                 </table>
-            </div>
-        </div>
-        
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <h6 class="border-bottom pb-2 mb-3">Customer Information</h6>
+                
+                <h6 class="border-bottom pb-2 mb-3 mt-4">Customer Information</h6>
                 <table class="table table-borderless">
                     <tr>
                         <th style="width: 30%">Name:</th>
@@ -248,12 +244,6 @@ try {
                         <td><?php echo htmlspecialchars($claim['customer_phone'] ?? 'N/A'); ?></td>
                     </tr>
                 </table>
-            </div>
-            <div class="col-md-6">
-                <h6 class="border-bottom pb-2 mb-3">Claim Description</h6>
-                <div class="p-3 bg-light rounded">
-                    <?php echo nl2br(htmlspecialchars($claim['description'])); ?>
-                </div>
             </div>
         </div>
         
@@ -312,38 +302,108 @@ try {
             <div class="col-12">
                 <h6 class="border-bottom pb-2 mb-3">Claim Media</h6>
                 
-                <div class="row">
-                    <?php foreach ($media as $item): ?>
-                        <?php if ($item['file_type'] === 'photo'): ?>
-                        <div class="col-md-3 mb-3">
-                            <div class="card">
-                                <img src="/warranty-management-system/uploads/claims/<?php echo $claimId; ?>/photos/<?php echo basename(htmlspecialchars($item['file_path'])); ?>" class="card-img-top" alt="Claim Photo">
-                                <div class="card-body p-2">
-                                    <p class="card-text small text-muted mb-0"><?php echo htmlspecialchars($item['original_filename']); ?></p>
-                                    <?php if (!empty($item['sku'])): ?>
-                                    <p class="card-text small text-primary mb-0">SKU: <?php echo htmlspecialchars($item['sku']); ?></p>
-                                    <?php endif; ?>
+                <?php 
+                // Group media by claim item ID and SKU
+                $mediaByItem = [];
+                
+                foreach ($media as $mediaItem) {
+                    $itemId = $mediaItem['claim_item_id'] ?? 0;
+                    if (!isset($mediaByItem[$itemId])) {
+                        $mediaByItem[$itemId] = [
+                            'sku' => $mediaItem['sku'] ?? 'Unknown',
+                            'media' => []
+                        ];
+                    }
+                    $mediaByItem[$itemId]['media'][] = $mediaItem;
+                }
+                
+                // Display media grouped by item
+                foreach ($mediaByItem as $itemId => $itemData): 
+                    $sku = $itemData['sku'];
+                    $itemMedia = $itemData['media'];
+                ?>
+                    <div class="mb-4 p-3 bg-light rounded">
+                        <h6 class="text-primary mb-3">
+                            <?php if ($itemId > 0): ?>
+                                Media for Item: <?php echo htmlspecialchars($sku); ?>
+                            <?php else: ?>
+                                General Claim Media
+                            <?php endif; ?>
+                        </h6>
+                        
+                        <?php 
+                        // Get all media items (photos and videos)
+                        $hasMedia = !empty($itemMedia);
+                        
+                        if ($hasMedia): 
+                        ?>
+                        <div class="row">
+                            <?php foreach ($itemMedia as $item): ?>
+                                <?php if ($item['file_type'] === 'photo'): ?>
+                                <div class="col-md-3 mb-3">
+                                    <div class="card h-100 shadow-sm">
+                                        <?php 
+                                        // Construct the correct file path
+                                        $photoPath = "/warranty-management-system/uploads/claims/{$claimId}/items/{$itemId}/photos/" . basename(htmlspecialchars($item['file_path']));
+                                        
+                                        // Check if file exists, otherwise use a placeholder
+                                        $serverPath = $_SERVER['DOCUMENT_ROOT'] . $photoPath;
+                                        $imgSrc = file_exists($serverPath) ? $photoPath : "/warranty-management-system/assets/img/placeholder-image.png";
+                                        ?>
+                                        <a href="<?php echo $imgSrc; ?>" target="_blank" class="image-link">
+                                            <img src="<?php echo $imgSrc; ?>" class="card-img-top" alt="Claim Photo" style="height: 180px; object-fit: cover;">
+                                        </a>
+                                        <div class="card-body p-2">
+                                            <p class="card-text small text-muted mb-0"><?php echo htmlspecialchars($item['original_filename']); ?></p>
+                                            <p class="card-text small text-muted"><?php echo date('M d, Y', strtotime($item['created_at'])); ?></p>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                                <?php elseif ($item['file_type'] === 'video'): ?>
+                                <div class="col-md-4 mb-3">
+                                    <div class="card h-100 shadow-sm">
+                                        <?php 
+                                        // Construct the correct file path
+                                        $videoPath = "/warranty-management-system/uploads/claims/{$claimId}/items/{$itemId}/videos/" . basename(htmlspecialchars($item['file_path']));
+                                        
+                                        // Check if file exists
+                                        $serverPath = $_SERVER['DOCUMENT_ROOT'] . $videoPath;
+                                        $videoExists = file_exists($serverPath);
+                                        ?>
+                                        
+                                        <?php if ($videoExists): ?>
+                                        <video class="w-100" controls style="height: 200px; object-fit: cover;">
+                                            <source src="<?php echo $videoPath; ?>" type="video/mp4">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                        <?php else: ?>
+                                        <div class="d-flex align-items-center justify-content-center bg-light" style="height: 200px;">
+                                            <p class="text-muted"><i class="fas fa-video fa-2x mb-2"></i><br>Video not found</p>
+                                        </div>
+                                        <?php endif; ?>
+                                        
+                                        <div class="card-body p-2">
+                                            <p class="card-text small text-muted mb-0"><?php echo htmlspecialchars($item['original_filename']); ?></p>
+                                            <p class="card-text small text-muted"><?php echo date('M d, Y', strtotime($item['created_at'])); ?></p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
                         </div>
                         <?php else: ?>
-                        <div class="col-md-4 mb-3">
-                            <div class="card">
-                                <video class="w-100" controls>
-                                    <source src="/warranty-management-system/uploads/claims/<?php echo $claimId; ?>/videos/<?php echo basename(htmlspecialchars($item['file_path'])); ?>" type="video/mp4">
-                                    Your browser does not support the video tag.
-                                </video>
-                                <div class="card-body p-2">
-                                    <p class="card-text small text-muted mb-0"><?php echo htmlspecialchars($item['original_filename']); ?></p>
-                                    <?php if (!empty($item['sku'])): ?>
-                                    <p class="card-text small text-primary mb-0">SKU: <?php echo htmlspecialchars($item['sku']); ?></p>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
+                        <div class="alert alert-warning">
+                            No media files found for this item.
                         </div>
                         <?php endif; ?>
-                    <?php endforeach; ?>
+                    </div>
+                <?php endforeach; ?>
+                
+                <?php if (empty($mediaByItem)): ?>
+                <div class="alert alert-info">
+                    No media files have been uploaded for this claim.
                 </div>
+                <?php endif; ?>
             </div>
         </div>
         <?php endif; ?>
@@ -361,6 +421,7 @@ try {
                             <tr>
                                 <th>#</th>
                                 <th>Note</th>
+                                <th>New SKUs</th>
                                 <th>Created By</th>
                                 <th>Created At</th>
                             </tr>
@@ -370,6 +431,7 @@ try {
                             <tr>
                                 <td><?php echo $index + 1; ?></td>
                                 <td><?php echo nl2br(htmlspecialchars($note['note'])); ?></td>
+                                <td><?php echo !empty($note['new_skus']) ? htmlspecialchars($note['new_skus']) : '-'; ?></td>
                                 <td><?php echo htmlspecialchars($note['created_by_name'] ?? 'System'); ?></td>
                                 <td><?php echo date('M d, Y h:i A', strtotime($note['created_at'])); ?></td>
                             </tr>

@@ -367,13 +367,13 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
 // Get claims from database with all associated items
 $claims = [];
 $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
-                      c.created_at, c.updated_at, c.created_by, c.claim_number,
-                      cc.name as category_name, cc.sla_days 
-               FROM claims c
-               LEFT JOIN claim_items ci ON c.id = ci.claim_id
-               LEFT JOIN claim_categories cc ON ci.category_id = cc.id
-               GROUP BY c.id
-               ORDER BY c.id DESC";
+                       c.created_at, c.updated_at, c.created_by, c.claim_number,
+                       cc.name as category_name, cc.sla_days 
+                FROM claims c
+                LEFT JOIN claim_items ci ON c.id = ci.claim_id
+                LEFT JOIN claim_categories cc ON ci.category_id = cc.id
+                GROUP BY c.id
+                ORDER BY c.created_at DESC";
 $stmt = $conn->prepare($claimsQuery);
 $stmt->execute();
 $claims = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -626,10 +626,9 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     <?php foreach ($claims as $claim): ?>
                     <tr data-claim-id="<?php echo $claim['id']; ?>">
                         <td>
+                            <span class="badge bg-secondary">#<?php echo $claim['id']; ?></span>
                             <?php if (!empty($claim['claim_number'])): ?>
-                                <span class="badge bg-info"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
-                            <?php else: ?>
-                                #<?php echo $claim['id']; ?>
+                                <span class="badge bg-info ms-1"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
                             <?php endif; ?>
                         </td>
                         <td><?php echo htmlspecialchars($claim['order_id']); ?></td>
@@ -717,12 +716,6 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                                 <a href="edit_claim.php?id=<?php echo $claim['id']; ?>" class="btn btn-outline-secondary" title="Edit Claim">
                                     <i class="fas fa-edit"></i>
                                 </a>
-                                <button type="button" class="btn btn-outline-secondary update-status" 
-                                        data-id="<?php echo $claim['id']; ?>"
-                                        data-status="<?php echo $claim['status']; ?>"
-                                        title="Update Status">
-                                    <i class="fas fa-tasks"></i>
-                                </button>
                                 <button type="button" class="btn btn-outline-danger delete-claim" 
                                         data-id="<?php echo $claim['id']; ?>"
                                         data-order="<?php echo htmlspecialchars($claim['order_id']); ?>"
@@ -857,44 +850,6 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
-
-<!-- Update Status Modal -->
-<div class="modal fade" id="updateStatusModal" tabindex="-1" aria-labelledby="updateStatusModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="updateStatusModalLabel">Update Claim Status</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form id="updateStatusForm">
-                <input type="hidden" name="claim_id" id="status_claim_id" value="">
-                
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="claim_status" class="form-label">Status</label>
-                        <select class="form-select" id="claim_status" name="status" required>
-                            <option value="new">New</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="on_hold">On Hold</option>
-                            <option value="approved">Approved</option>
-                            <option value="rejected">Rejected</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="status_note" class="form-label">Note (Optional)</label>
-                        <textarea class="form-control" id="status_note" name="note" rows="3" placeholder="Add a note about this status change..."></textarea>
-                        <div class="form-text">If left empty, a default note about the status change will be added.</div>
-                    </div>
-                </div>
-                
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary update-status-btn">Update Status</button>
-                </div>
-            </form>
         </div>
     </div>
 </div>
