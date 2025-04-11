@@ -9,8 +9,15 @@
 // Set page title
 $pageTitle = 'Settings';
 
+// Include required files
+require_once '../includes/auth_helper.php';
+
+// Enforce admin-only access
+enforceAdminOnly();
+
 // Include header
 require_once 'includes/header.php';
+
 ?>
 
 <div class="page-title">

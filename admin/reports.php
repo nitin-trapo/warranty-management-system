@@ -14,10 +14,20 @@ require_once 'includes/header.php';
 // Include database connection
 require_once '../config/database.php';
 
+// Include auth helper
+require_once '../includes/auth_helper.php';
+
+// Check if user is logged in
+requireLogin();
+
 // Initialize variables
 $reportType = isset($_GET['type']) ? $_GET['type'] : 'claim_performance';
 $startDate = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-30 days'));
 $endDate = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
+
+// Get current user ID and role
+$userId = $_SESSION['user_id'];
+$isUserAdmin = isAdmin();
 
 // Get report data
 try {
@@ -25,13 +35,26 @@ try {
     
     // Data for claim performance report
     if ($reportType == 'claim_performance') {
-        // Claims by status
+        // Claims by status - filter by user ID for CS agents
         $statusQuery = "SELECT status, COUNT(*) as count 
                        FROM claims 
-                       WHERE created_at BETWEEN ? AND ? 
-                       GROUP BY status";
+                       WHERE created_at BETWEEN ? AND ? ";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $statusQuery .= " AND assigned_to = ? ";
+        }
+        
+        $statusQuery .= " GROUP BY status";
         $stmt = $conn->prepare($statusQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $claimsByStatus = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Format claims by status for easy access
@@ -55,8 +78,21 @@ try {
                            WHERE status IN ('approved', 'rejected') 
                            AND created_at BETWEEN ? AND ? 
                            AND updated_at IS NOT NULL";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $resolutionQuery .= " AND assigned_to = ? ";
+        }
+        
         $stmt = $conn->prepare($resolutionQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $avgResolutionDays = $stmt->fetch(PDO::FETCH_ASSOC)['avg_days'] ?? 0;
         
         // SLA compliance
@@ -68,10 +104,22 @@ try {
                     LEFT JOIN claim_categories cc ON ci.category_id = cc.id
                     WHERE c.status IN ('approved', 'rejected')
                     AND c.created_at BETWEEN ? AND ?
-                    AND c.updated_at IS NOT NULL
-                    GROUP BY c.id";
+                    AND c.updated_at IS NOT NULL";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $slaQuery .= " AND c.assigned_to = ? ";
+        }
+        
         $stmt = $conn->prepare($slaQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $slaData = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         $totalResolved = count($slaData);
@@ -93,11 +141,24 @@ try {
                            LEFT JOIN claim_categories cc ON ci.category_id = cc.id
                            WHERE c.status NOT IN ('approved', 'rejected')
                            AND c.created_at BETWEEN ? AND ?
-                           AND TIMESTAMPDIFF(DAY, c.created_at, NOW()) > IFNULL(cc.sla_days, 7)
-                           GROUP BY c.id
+                           AND TIMESTAMPDIFF(DAY, c.created_at, NOW()) > IFNULL(cc.sla_days, 7)";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $escalatedQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $escalatedQuery .= " GROUP BY c.id
                            ORDER BY days_open DESC";
         $stmt = $conn->prepare($escalatedQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $escalatedClaims = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
@@ -108,12 +169,25 @@ try {
                     MAX(ci.product_name) as product_name
                     FROM claim_items ci
                     JOIN claims c ON ci.claim_id = c.id
-                    WHERE c.created_at BETWEEN ? AND ?
-                    GROUP BY ci.sku
+                    WHERE c.created_at BETWEEN ? AND ?";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $skuQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $skuQuery .= " GROUP BY ci.sku
                     ORDER BY claim_count DESC
                     LIMIT 10";
         $stmt = $conn->prepare($skuQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $topClaimedSkus = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Claims by category (reason)
@@ -121,21 +195,47 @@ try {
                          FROM claim_items ci
                          JOIN claims c ON ci.claim_id = c.id
                          JOIN claim_categories cc ON ci.category_id = cc.id
-                         WHERE c.created_at BETWEEN ? AND ?
-                         GROUP BY cc.name
+                         WHERE c.created_at BETWEEN ? AND ?";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $categoryQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $categoryQuery .= " GROUP BY cc.name
                          ORDER BY claim_count DESC";
         $stmt = $conn->prepare($categoryQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $claimsByCategory = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Get total claims for each SKU
         $skuTotalQuery = "SELECT ci.sku, COUNT(*) as total_claims
                          FROM claim_items ci
                          JOIN claims c ON ci.claim_id = c.id
-                         WHERE c.created_at BETWEEN ? AND ?
-                         GROUP BY ci.sku";
+                         WHERE c.created_at BETWEEN ? AND ?";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $skuTotalQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $skuTotalQuery .= " GROUP BY ci.sku";
         $stmt = $conn->prepare($skuTotalQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $skuTotals = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Format SKU totals for easy access
@@ -151,12 +251,25 @@ try {
         $productTypeQuery = "SELECT ci.product_type as product_type_name, COUNT(*) as claim_count
                              FROM claim_items ci
                              JOIN claims c ON ci.claim_id = c.id
-                             WHERE c.created_at BETWEEN ? AND ?
-                             AND ci.product_type IS NOT NULL AND ci.product_type != ''
+                             WHERE c.created_at BETWEEN ? AND ?";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $productTypeQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $productTypeQuery .= " AND ci.product_type IS NOT NULL AND ci.product_type != ''
                              GROUP BY ci.product_type
                              ORDER BY claim_count DESC";
         $stmt = $conn->prepare($productTypeQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $topClaimedProductTypes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Claims by product type and category
@@ -164,12 +277,25 @@ try {
                                      FROM claim_items ci
                                      JOIN claims c ON ci.claim_id = c.id
                                      JOIN claim_categories cc ON ci.category_id = cc.id
-                                     WHERE c.created_at BETWEEN ? AND ?
-                                     AND ci.product_type IS NOT NULL AND ci.product_type != ''
+                                     WHERE c.created_at BETWEEN ? AND ?";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $productTypeCategoryQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $productTypeCategoryQuery .= " AND ci.product_type IS NOT NULL AND ci.product_type != ''
                                      GROUP BY ci.product_type, cc.name
                                      ORDER BY claim_count DESC";
         $stmt = $conn->prepare($productTypeCategoryQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $claimsByProductTypeCategory = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
@@ -180,11 +306,24 @@ try {
                          FROM claim_items ci
                          JOIN claims c ON ci.claim_id = c.id
                          JOIN claim_categories cc ON ci.category_id = cc.id
-                         WHERE c.created_at BETWEEN ? AND ?
-                         GROUP BY cc.name
+                         WHERE c.created_at BETWEEN ? AND ?";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $categoryQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $categoryQuery .= " GROUP BY cc.name
                          ORDER BY claim_count DESC";
         $stmt = $conn->prepare($categoryQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $claimsByCategory = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Claims by category and SKU
@@ -192,11 +331,24 @@ try {
                              FROM claim_items ci
                              JOIN claims c ON ci.claim_id = c.id
                              JOIN claim_categories cc ON ci.category_id = cc.id
-                             WHERE c.created_at BETWEEN ? AND ?
-                             GROUP BY cc.name, ci.sku
+                             WHERE c.created_at BETWEEN ? AND ?";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $categorySkuQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $categorySkuQuery .= " GROUP BY cc.name, ci.sku
                              ORDER BY claim_count DESC";
         $stmt = $conn->prepare($categorySkuQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $claimsByCategorySku = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
@@ -233,11 +385,24 @@ try {
                             FROM claim_items ci
                             JOIN claims c ON ci.claim_id = c.id
                             JOIN claim_categories cc ON ci.category_id = cc.id
-                            WHERE c.created_at BETWEEN ? AND ?
-                            GROUP BY cc.id, DATE_FORMAT(c.created_at, '%Y-%m')
+                            WHERE c.created_at BETWEEN ? AND ?";
+        
+        // Add user filter for CS agents
+        if (!$isUserAdmin) {
+            $monthlyDataQuery .= " AND c.assigned_to = ? ";
+        }
+        
+        $monthlyDataQuery .= " GROUP BY cc.id, DATE_FORMAT(c.created_at, '%Y-%m')
                             ORDER BY cc.name, month";
         $stmt = $conn->prepare($monthlyDataQuery);
-        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        
+        // Execute with appropriate parameters
+        if (!$isUserAdmin) {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59', $userId]);
+        } else {
+            $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
         $monthlyData = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Format data for display

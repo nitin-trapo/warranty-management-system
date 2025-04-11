@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($result['status'] === 'success') {
                     $response['redirect'] = ($result['role'] === 'admin') 
                         ? 'admin/dashboard.php' 
-                        : 'cs_agent/dashboard.php';
+                        : 'admin/dashboard.php';
                 }
             }
             break;

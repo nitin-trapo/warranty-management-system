@@ -695,6 +695,7 @@ foreach ($mediaResults as $mediaItem) {
                                 <tr>
                                     <th>#</th>
                                     <th>Note</th>
+                                    <th>New SKUs</th>
                                     <th>Created By</th>
                                     <th>Created At</th>
                                 </tr>
@@ -704,6 +705,7 @@ foreach ($mediaResults as $mediaItem) {
                                 <tr>
                                     <td><?php echo $index + 1; ?></td>
                                     <td><?php echo nl2br(htmlspecialchars($note['note'])); ?></td>
+                                    <td><?php echo htmlspecialchars($note['new_skus'] ?? 'N/A'); ?></td>
                                     <td><?php echo htmlspecialchars($note['created_by_name'] ?? 'System'); ?></td>
                                     <td><?php echo date('M d, Y h:i A', strtotime($note['created_at'])); ?></td>
                                 </tr>
@@ -776,6 +778,11 @@ foreach ($mediaResults as $mediaItem) {
                     <div class="mb-3">
                         <label for="note_text" class="form-label">Note</label>
                         <textarea class="form-control" id="note_text" name="note" rows="4" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_skus_note" class="form-label">New SKUs (Optional)</label>
+                        <input type="text" class="form-control" id="new_skus_note" name="new_skus" placeholder="Enter new SKUs separated by commas">
+                        <div class="form-text">For replacement items, enter the new SKUs separated by commas.</div>
                     </div>
                 </form>
             </div>

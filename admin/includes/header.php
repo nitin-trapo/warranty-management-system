@@ -14,8 +14,8 @@ date_default_timezone_set(TIMEZONE);
 require_once __DIR__ . '/../../includes/auth_helper.php';
 require_once __DIR__ . '/../../includes/alert_helper.php';
 
-// Require admin privileges
-requireAdmin();
+// Require admin or CS agent privileges
+requireAdminOrCsAgent();
 
 // Get admin user data
 $user = getUserById($_SESSION['user_id']);
@@ -28,7 +28,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo isset($pageTitle) ? $pageTitle . ' - ' : ''; ?>Admin Dashboard - <?php echo MAIL_FROM_NAME; ?></title>
+    <title><?php echo isset($pageTitle) ? $pageTitle . ' - ' : ''; ?><?php echo isCsAgent() ? 'WMS Agent' : 'Admin Dashboard'; ?> - <?php echo MAIL_FROM_NAME; ?></title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -464,7 +464,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <i class="fas fa-shield-alt logo-icon"></i>
-            <h3 class="menu-text">WMS Admin</h3>
+            <h3 class="menu-text"><?php echo isCsAgent() ? 'WMS Agent' : 'WMS Admin'; ?></h3>
         </div>
         
         <ul class="sidebar-menu">
@@ -480,6 +480,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                     <span class="menu-text">Claims Management</span>
                 </a>
             </li>
+            <?php if (isAdmin()): ?>
             <li>
                 <a href="users.php" class="<?php echo $currentPage == 'users.php' ? 'active' : ''; ?>">
                     <i class="fas fa-users"></i>
@@ -498,6 +499,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                     <span class="menu-text">Warranty Rules</span>
                 </a>
             </li>
+            <?php endif; ?>
             
             <div class="sidebar-divider"></div>
             
@@ -507,6 +509,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                     <span class="menu-text">Reports</span>
                 </a>
             </li>
+            <?php if (isAdmin()): ?>
             <li>
                 <a href="audit_logs.php" class="<?php echo $currentPage == 'audit_logs.php' ? 'active' : ''; ?>">
                     <i class="fas fa-history"></i>
@@ -519,6 +522,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                     <span class="menu-text">Settings</span>
                 </a>
             </li>
+            <?php endif; ?>
         </ul>
         
         <div class="sidebar-footer">

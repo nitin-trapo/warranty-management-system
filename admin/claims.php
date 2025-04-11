@@ -81,6 +81,7 @@ try {
                 `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                 `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
                 `created_by` int(11) NOT NULL,
+                `assigned_to` int(11) DEFAULT NULL,
                 `claim_number` VARCHAR(50) NULL,
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -255,16 +256,16 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
             $insertClaimSQL = "
                 INSERT INTO `claims` (
                     `order_id`, `customer_name`, `customer_email`, `customer_phone`, 
-                    `delivery_date`, `created_by`, `claim_number`
+                    `delivery_date`, `created_by`, `assigned_to`, `claim_number`
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?
                 )
             ";
             
             $stmt = $conn->prepare($insertClaimSQL);
             $stmt->execute([
                 $orderId, $customerName, $customerEmail, $customerPhone,
-                $deliveryDate, $userId, $claimNumber
+                $deliveryDate, $userId, $userId, $claimNumber
             ]);
             
             $claimId = $conn->lastInsertId();
@@ -366,7 +367,23 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
 
 // Get claims from database with all associated items
 $claims = [];
-$claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
+
+// Modify query based on user role
+if (isCsAgent()) {
+    $csAgentId = $_SESSION['user_id'];
+    $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
+                       c.created_at, c.updated_at, c.created_by, c.claim_number,
+                       cc.name as category_name, cc.sla_days 
+                FROM claims c
+                LEFT JOIN claim_items ci ON c.id = ci.claim_id
+                LEFT JOIN claim_categories cc ON ci.category_id = cc.id
+                WHERE c.assigned_to = :csAgentId
+                GROUP BY c.id
+                ORDER BY c.created_at DESC";
+    $stmt = $conn->prepare($claimsQuery);
+    $stmt->bindParam(':csAgentId', $csAgentId);
+} else {
+    $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
                        c.created_at, c.updated_at, c.created_by, c.claim_number,
                        cc.name as category_name, cc.sla_days 
                 FROM claims c
@@ -374,7 +391,8 @@ $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.st
                 LEFT JOIN claim_categories cc ON ci.category_id = cc.id
                 GROUP BY c.id
                 ORDER BY c.created_at DESC";
-$stmt = $conn->prepare($claimsQuery);
+    $stmt = $conn->prepare($claimsQuery);
+}
 $stmt->execute();
 $claims = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -604,7 +622,7 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover table-striped" id="claimsTable" width="100%" cellspacing="0">
+            <table class="table table-hover table-striped" id="claimsTable" width="100%" cellspacing="0" data-order='[[ 0, "desc" ]]'>
                 <thead class="table-light">
                     <tr>
                         <th>Claim #</th>
@@ -625,7 +643,7 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     <?php else: ?>
                     <?php foreach ($claims as $claim): ?>
                     <tr data-claim-id="<?php echo $claim['id']; ?>">
-                        <td>
+                        <td data-sort="<?php echo $claim['id']; ?>">
                             <span class="badge bg-secondary">#<?php echo $claim['id']; ?></span>
                             <?php if (!empty($claim['claim_number'])): ?>
                                 <span class="badge bg-info ms-1"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
@@ -716,12 +734,14 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                                 <a href="edit_claim.php?id=<?php echo $claim['id']; ?>" class="btn btn-outline-secondary" title="Edit Claim">
                                     <i class="fas fa-edit"></i>
                                 </a>
+                                <?php if (isAdmin()): ?>
                                 <button type="button" class="btn btn-outline-danger delete-claim" 
                                         data-id="<?php echo $claim['id']; ?>"
                                         data-order="<?php echo htmlspecialchars($claim['order_id']); ?>"
                                         title="Delete Claim">
                                     <i class="fas fa-trash"></i>
                                 </button>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>
@@ -1279,6 +1299,68 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
     });
 </script>
 
+<script>
+    $(document).ready(function() {
+        // Initialize DataTable for claims with proper sorting
+        if ($('#claimsTable').length > 0) {
+            // Destroy existing DataTable if it exists
+            if ($.fn.DataTable.isDataTable('#claimsTable')) {
+                $('#claimsTable').DataTable().destroy();
+            }
+            
+            // Initialize with proper sorting
+            $('#claimsTable').DataTable({
+                responsive: true,
+                order: [[0, 'desc']], // Sort by Claim ID column (1st column, index 0) in descending order
+                language: {
+                    search: "_INPUT_",
+                    searchPlaceholder: "Search...",
+                    lengthMenu: "Show _MENU_ entries",
+                    info: "Showing _START_ to _END_ of _TOTAL_ entries",
+                    infoEmpty: "Showing 0 to 0 of 0 entries",
+                    infoFiltered: "(filtered from _MAX_ total entries)"
+                },
+                stateSave: false, // Disable state saving to ensure default sorting is always applied
+                "columnDefs": [
+                    { "orderable": false, "targets": -1 }, // Disable sorting on action column
+                    { "type": "num", "targets": 0 }  // Ensure numeric sorting for claim ID column
+                ],
+                "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]]
+            });
+        }
+    });
+</script>
+
+<script>
+    $(document).ready(function() {
+        // Delete claim modal
+        $(document).on('click', '.delete-claim', function() {
+            const claimId = $(this).data('id');
+            const orderId = $(this).data('order');
+            
+            $('#delete_order_id').text(orderId);
+            $('#confirmDeleteBtn').attr('href', 'delete_claim.php?id=' + claimId);
+            
+            $('#deleteClaimModal').modal('show');
+            
+            // Debug
+            console.log('Delete claim clicked:', { claimId, orderId });
+            console.log('Delete button href:', $('#confirmDeleteBtn').attr('href'));
+        });
+
+        // Wait a short moment to ensure DataTable is initialized by other scripts
+        setTimeout(function() {
+            // Check if DataTable is already initialized
+            if ($.fn.DataTable.isDataTable('#claimsTable')) {
+                // Get the DataTable instance and update its order
+                var table = $('#claimsTable').DataTable();
+                table.order([0, 'desc']).draw();
+                console.log('Claims table sorting updated to show latest claims first');
+            }
+        }, 100);
+    });
+</script>
+
 <style>
     /* DataTable styling */
     .dataTables_wrapper .dataTables_length, 
@@ -1407,40 +1489,3 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
         text-overflow: ellipsis;
     }
 </style>
-
-<!-- Initialize DataTable -->
-<script>
-    $(document).ready(function() {
-        $('#claimsTable').DataTable({
-            responsive: true,
-            stateSave: true,
-            "columnDefs": [
-                { "orderable": false, "targets": -1 } // Disable sorting on action column
-            ],
-            "order": [[ 0, "desc" ]], // Sort by ID descending by default
-            "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
-            "language": {
-                "lengthMenu": "Show _MENU_ claims per page",
-                "zeroRecords": "No claims found",
-                "info": "Showing page _PAGE_ of _PAGES_",
-                "infoEmpty": "No claims available",
-                "infoFiltered": "(filtered from _MAX_ total claims)"
-            }
-        });
-        
-        // Delete claim modal
-        $(document).on('click', '.delete-claim', function() {
-            const claimId = $(this).data('id');
-            const orderId = $(this).data('order');
-            
-            $('#delete_order_id').text(orderId);
-            $('#confirmDeleteBtn').attr('href', 'delete_claim.php?id=' + claimId);
-            
-            $('#deleteClaimModal').modal('show');
-            
-            // Debug
-            console.log('Delete claim clicked:', { claimId, orderId });
-            console.log('Delete button href:', $('#confirmDeleteBtn').attr('href'));
-        });
-    });
-</script>

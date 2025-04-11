@@ -8,6 +8,7 @@
 // Include required files
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/email_helper.php';
+require_once __DIR__ . '/alert_helper.php';
 
 /**
  * Check if user exists by email
@@ -275,6 +276,38 @@ function requireCsAgent() {
     
     if (!isCsAgent()) {
         header('Location: ' . BASE_URL . '/dashboard.php');
+        exit;
+    }
+}
+
+/**
+ * Require either admin or CS agent privileges
+ * 
+ * @return void
+ */
+function requireAdminOrCsAgent() {
+    requireLogin();
+    
+    if (!isAdmin() && !isCsAgent()) {
+        header('Location: ' . BASE_URL . '/dashboard.php');
+        exit;
+    }
+}
+
+/**
+ * Enforce admin-only access and redirect non-admins to dashboard
+ * 
+ * @return void
+ */
+function enforceAdminOnly() {
+    requireLogin();
+    
+    if (!isAdmin()) {
+        // Set alert message
+        setAlert('danger', 'Access Denied: You do not have permission to access this page.');
+        
+        // Redirect to dashboard
+        header('Location: dashboard.php');
         exit;
     }
 }

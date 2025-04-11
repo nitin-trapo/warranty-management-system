@@ -37,6 +37,7 @@ if (!isset($_POST['claim_id']) || !isset($_POST['note'])) {
 // Get parameters
 $claimId = (int)$_POST['claim_id'];
 $note = trim($_POST['note']);
+$newSkus = isset($_POST['new_skus']) ? trim($_POST['new_skus']) : '';
 
 // Validate note
 if (empty($note)) {
@@ -55,10 +56,10 @@ try {
     $userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 1; // Default to 1 if not set
     
     // Add note to claim_notes table
-    $query = "INSERT INTO claim_notes (claim_id, note, created_by, created_at) 
-              VALUES (?, ?, ?, NOW())";
+    $query = "INSERT INTO claim_notes (claim_id, note, new_skus, created_by, created_at) 
+              VALUES (?, ?, ?, ?, NOW())";
     $stmt = $conn->prepare($query);
-    $stmt->execute([$claimId, $note, $userId]);
+    $stmt->execute([$claimId, $note, $newSkus, $userId]);
     
     // Get the inserted note ID
     $noteId = $conn->lastInsertId();

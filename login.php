@@ -20,8 +20,10 @@ if (isLoggedIn()) {
     // Redirect based on user role
     if (isAdmin()) {
         header('Location: admin/dashboard.php');
+    } else if (isCsAgent()) {
+        header('Location: admin/dashboard.php');
     } else {
-        header('Location: cs_agent/dashboard.php');
+        header('Location: admin/dashboard.php');
     }
     exit;
 }

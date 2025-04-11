@@ -202,15 +202,15 @@ try {
     $stmt = $conn->prepare("
         INSERT INTO claims (
             order_id, customer_name, customer_email, customer_phone, 
-            delivery_date, status, created_by, claim_number
+            delivery_date, status, created_by, assigned_to, claim_number
         ) VALUES (
-            ?, ?, ?, ?, ?, 'new', ?, ?
+            ?, ?, ?, ?, ?, 'new', ?, ?, ?
         )
     ");
     
     $stmt->execute([
         $orderId, $customerName, $customerEmail, $customerPhone, 
-        $deliveryDate, $userId, $claimNumber
+        $deliveryDate, $userId, $userId, $claimNumber
     ]);
     
     $claimId = $conn->lastInsertId();

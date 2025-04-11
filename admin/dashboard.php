@@ -45,8 +45,23 @@ try {
             $periodLabel = 'This Year';
     }
     
+    // Add CS agent filter if user is a CS agent
+    $csAgentFilter = '';
+    $csAgentClaimsFilter = '';
+    if (isCsAgent()) {
+        $csAgentId = $_SESSION['user_id'];
+        $csAgentFilter = "AND c.assigned_to = :csAgentId";
+        $csAgentClaimsFilter = "AND assigned_to = :csAgentId";
+    }
+    
     // Total claims (not filtered by time period)
-    $stmt = $conn->query("SELECT COUNT(*) as total FROM claims");
+    if (isCsAgent()) {
+        $stmt = $conn->prepare("SELECT COUNT(*) as total FROM claims WHERE assigned_to = :csAgentId");
+        $stmt->bindParam(':csAgentId', $csAgentId);
+        $stmt->execute();
+    } else {
+        $stmt = $conn->query("SELECT COUNT(*) as total FROM claims");
+    }
     $totalClaims = $stmt->fetch()['total'] ?? 0;
     
     // Claims by status with time period filter
@@ -54,8 +69,17 @@ try {
     if (!empty($claimsFilter)) {
         $statusQuery .= " $claimsFilter";
     }
+    if (!empty($csAgentClaimsFilter)) {
+        $statusQuery .= " $csAgentClaimsFilter";
+    }
     $statusQuery .= " GROUP BY status";
-    $stmt = $conn->query($statusQuery);
+    if (isCsAgent()) {
+        $stmt = $conn->prepare($statusQuery);
+        $stmt->bindParam(':csAgentId', $csAgentId);
+        $stmt->execute();
+    } else {
+        $stmt = $conn->query($statusQuery);
+    }
     $claimsByStatus = $stmt->fetchAll();
     
     // Format claims by status for easy access
@@ -72,13 +96,17 @@ try {
     }
     
     // Recent claims
-    $stmt = $conn->query("SELECT c.*, ci.category_id, cc.name as category_name, cc.sla_days 
+    $stmt = $conn->prepare("SELECT c.*, ci.category_id, cc.name as category_name, cc.sla_days 
                          FROM claims c 
                          LEFT JOIN claim_items ci ON c.id = ci.claim_id
                          LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
-                         WHERE 1=1 $dateFilter
+                         WHERE 1=1 $dateFilter $csAgentFilter
                          GROUP BY c.id
                          ORDER BY c.created_at DESC LIMIT 5");
+    if (isCsAgent()) {
+        $stmt->bindParam(':csAgentId', $csAgentId);
+    }
+    $stmt->execute();
     $recentClaims = $stmt->fetchAll();
     
     // Calculate SLA breaches
@@ -92,41 +120,104 @@ try {
     if ($timePeriod != 'all') {
         $slaBreachQuery .= " " . str_replace('AND ', 'AND ', $dateFilter);
     }
-    $stmt = $conn->query($slaBreachQuery);
+    if (!empty($csAgentClaimsFilter)) {
+        $slaBreachQuery .= " $csAgentClaimsFilter";
+    }
+    if (isCsAgent()) {
+        $stmt = $conn->prepare($slaBreachQuery);
+        $stmt->bindParam(':csAgentId', $csAgentId);
+        $stmt->execute();
+    } else {
+        $stmt = $conn->query($slaBreachQuery);
+    }
     $slaBreaches = $stmt->fetch()['total'] ?? 0;
     
     // Claims by category
-    $stmt = $conn->query("SELECT cc.name, COUNT(*) as count 
+    $stmt = $conn->prepare("SELECT cc.name, COUNT(*) as count 
                          FROM claim_items ci
                          JOIN claim_categories cc ON ci.category_id = cc.id
                          JOIN claims c ON ci.claim_id = c.id
-                         WHERE 1=1 $dateFilter
+                         WHERE 1=1 $dateFilter $csAgentFilter
                          GROUP BY ci.category_id
                          ORDER BY count DESC
                          LIMIT 5");
+    if (isCsAgent()) {
+        $stmt->bindParam(':csAgentId', $csAgentId);
+    }
+    $stmt->execute();
     $claimsByCategory = $stmt->fetchAll();
     
     // Claims by product type (top 5)
-    $stmt = $conn->query("SELECT ci.product_type, COUNT(*) as count 
+    $stmt = $conn->prepare("SELECT ci.product_type, COUNT(*) as count 
                          FROM claim_items ci
                          JOIN claims c ON ci.claim_id = c.id
-                         WHERE 1=1 $dateFilter
+                         WHERE 1=1 $dateFilter $csAgentFilter
                          GROUP BY ci.product_type
                          ORDER BY count DESC
                          LIMIT 5");
+    if (isCsAgent()) {
+        $stmt->bindParam(':csAgentId', $csAgentId);
+    }
+    $stmt->execute();
     $claimsByProductType = $stmt->fetchAll();
     
     // Claims created today
     $todayQuery = "SELECT COUNT(*) as total FROM claims WHERE DATE(created_at) = CURDATE()";
-    $stmt = $conn->query($todayQuery);
+    if (!empty($csAgentClaimsFilter)) {
+        $todayQuery .= " $csAgentClaimsFilter";
+    }
+    if (isCsAgent()) {
+        $stmt = $conn->prepare($todayQuery);
+        $stmt->bindParam(':csAgentId', $csAgentId);
+        $stmt->execute();
+    } else {
+        $stmt = $conn->query($todayQuery);
+    }
     $claimsToday = $stmt->fetch()['total'] ?? 0;
     
     // Claims resolved today
     $resolvedTodayQuery = "SELECT COUNT(*) as total FROM claims 
                           WHERE DATE(updated_at) = CURDATE() 
                           AND status IN ('approved', 'rejected')";
-    $stmt = $conn->query($resolvedTodayQuery);
+    if (!empty($csAgentClaimsFilter)) {
+        $resolvedTodayQuery .= " $csAgentClaimsFilter";
+    }
+    if (isCsAgent()) {
+        $stmt = $conn->prepare($resolvedTodayQuery);
+        $stmt->bindParam(':csAgentId', $csAgentId);
+        $stmt->execute();
+    } else {
+        $stmt = $conn->query($resolvedTodayQuery);
+    }
     $resolvedToday = $stmt->fetch()['total'] ?? 0;
+    
+    // Claims by month (for chart)
+    $claimsByMonthQuery = "
+        SELECT 
+            MONTH(created_at) as month, 
+            COUNT(*) as total 
+        FROM claims 
+        WHERE YEAR(created_at) = YEAR(CURRENT_DATE())";
+    
+    if (!empty($csAgentClaimsFilter)) {
+        $claimsByMonthQuery .= " $csAgentClaimsFilter";
+    }
+    
+    $claimsByMonthQuery .= " GROUP BY MONTH(created_at) ORDER BY MONTH(created_at)";
+    
+    if (isCsAgent()) {
+        $stmt = $conn->prepare($claimsByMonthQuery);
+        $stmt->bindParam(':csAgentId', $csAgentId);
+        $stmt->execute();
+    } else {
+        $stmt = $conn->query($claimsByMonthQuery);
+    }
+    
+    $claimsByMonth = [];
+    $months = [
+        1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr', 5 => 'May', 6 => 'Jun',
+        7 => 'Jul', 8 => 'Aug', 9 => 'Sep', 10 => 'Oct', 11 => 'Nov', 12 => 'Dec'
+    ];
     
 } catch (PDOException $e) {
     // Log error
