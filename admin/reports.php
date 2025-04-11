@@ -758,6 +758,20 @@ try {
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<style>
+    /* Custom styling for reports */
+    .report-container {
+        padding: 20px;
+    }
+    .chart-container {
+        margin-bottom: 30px;
+    }
+    .report-table {
+        width: 100% !important;
+        margin-bottom: 30px;
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Add CSS to fix table width issues

@@ -90,6 +90,53 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             box-shadow: none !important;
         }
         
+        /* Improved DataTable styling */
+        .table.dataTable {
+            border-collapse: collapse !important;
+            border: none !important;
+        }
+        
+        .table.dataTable tbody tr:hover {
+            background-color: transparent !important;
+        }
+        
+        .table.dataTable.no-footer {
+            border-bottom: 1px solid #dee2e6 !important;
+        }
+        
+        .table.dataTable thead th, 
+        .table.dataTable thead td {
+            border-bottom: 1px solid #dee2e6 !important;
+        }
+        
+        /* Pagination styling */
+        .dataTables_paginate .paginate_button {
+            border: none !important;
+            background: transparent !important;
+        }
+        
+        .dataTables_paginate .paginate_button:hover {
+            background: #f8f9fa !important;
+            border: none !important;
+        }
+        
+        .dataTables_paginate .paginate_button.current {
+            background: #007bff !important;
+            color: white !important;
+            border: none !important;
+        }
+        
+        .dataTables_paginate .paginate_button.current:hover {
+            background: #0069d9 !important;
+            color: white !important;
+        }
+        
+        /* Fix for horizontal scrolling */
+        .dataTables_wrapper {
+            overflow-x: hidden;
+            width: 100%;
+        }
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--background-color);

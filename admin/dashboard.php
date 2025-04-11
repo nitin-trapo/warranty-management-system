@@ -15,12 +15,47 @@ require_once 'includes/header.php';
 try {
     $conn = getDbConnection();
     
-    // Total claims
+    // Get time period filter
+    $timePeriod = $_GET['period'] ?? 'year';
+    
+    // Set date filters based on time period
+    $dateFilter = '';
+    $claimsFilter = '';
+    $periodLabel = 'This Year';
+    
+    switch ($timePeriod) {
+        case 'week':
+            $dateFilter = "AND YEARWEEK(c.created_at, 1) = YEARWEEK(NOW(), 1)";
+            $claimsFilter = "WHERE YEARWEEK(created_at, 1) = YEARWEEK(NOW(), 1)";
+            $periodLabel = 'This Week';
+            break;
+        case 'month':
+            $dateFilter = "AND MONTH(c.created_at) = MONTH(CURRENT_DATE()) AND YEAR(c.created_at) = YEAR(CURRENT_DATE())";
+            $claimsFilter = "WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())";
+            $periodLabel = 'This Month';
+            break;
+        case 'year':
+            $dateFilter = "AND YEAR(c.created_at) = YEAR(CURRENT_DATE())";
+            $claimsFilter = "WHERE YEAR(created_at) = YEAR(CURRENT_DATE())";
+            $periodLabel = 'This Year';
+            break;
+        default:
+            $dateFilter = "AND YEAR(c.created_at) = YEAR(CURRENT_DATE())";
+            $claimsFilter = "WHERE YEAR(created_at) = YEAR(CURRENT_DATE())";
+            $periodLabel = 'This Year';
+    }
+    
+    // Total claims (not filtered by time period)
     $stmt = $conn->query("SELECT COUNT(*) as total FROM claims");
     $totalClaims = $stmt->fetch()['total'] ?? 0;
     
-    // Claims by status
-    $stmt = $conn->query("SELECT status, COUNT(*) as count FROM claims GROUP BY status");
+    // Claims by status with time period filter
+    $statusQuery = "SELECT status, COUNT(*) as count FROM claims";
+    if (!empty($claimsFilter)) {
+        $statusQuery .= " $claimsFilter";
+    }
+    $statusQuery .= " GROUP BY status";
+    $stmt = $conn->query($statusQuery);
     $claimsByStatus = $stmt->fetchAll();
     
     // Format claims by status for easy access
@@ -41,6 +76,7 @@ try {
                          FROM claims c 
                          LEFT JOIN claim_items ci ON c.id = ci.claim_id
                          LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
+                         WHERE 1=1 $dateFilter
                          GROUP BY c.id
                          ORDER BY c.created_at DESC LIMIT 5");
     $recentClaims = $stmt->fetchAll();
@@ -53,6 +89,9 @@ try {
                       WHERE c.status NOT IN ('approved', 'rejected') 
                       AND cc.sla_days > 0
                       AND DATE_ADD(c.created_at, INTERVAL cc.sla_days DAY) < NOW()";
+    if ($timePeriod != 'all') {
+        $slaBreachQuery .= " " . str_replace('AND ', 'AND ', $dateFilter);
+    }
     $stmt = $conn->query($slaBreachQuery);
     $slaBreaches = $stmt->fetch()['total'] ?? 0;
     
@@ -60,6 +99,8 @@ try {
     $stmt = $conn->query("SELECT cc.name, COUNT(*) as count 
                          FROM claim_items ci
                          JOIN claim_categories cc ON ci.category_id = cc.id
+                         JOIN claims c ON ci.claim_id = c.id
+                         WHERE 1=1 $dateFilter
                          GROUP BY ci.category_id
                          ORDER BY count DESC
                          LIMIT 5");
@@ -68,6 +109,8 @@ try {
     // Claims by product type (top 5)
     $stmt = $conn->query("SELECT ci.product_type, COUNT(*) as count 
                          FROM claim_items ci
+                         JOIN claims c ON ci.claim_id = c.id
+                         WHERE 1=1 $dateFilter
                          GROUP BY ci.product_type
                          ORDER BY count DESC
                          LIMIT 5");
@@ -194,12 +237,12 @@ try {
                 <h6 class="mb-0">Claims Overview</h6>
                 <div class="dropdown">
                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle py-0 px-2" type="button" id="chartDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                        This Month
+                        <?php echo $periodLabel; ?>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="chartDropdown">
-                        <li><a class="dropdown-item" href="#">This Week</a></li>
-                        <li><a class="dropdown-item" href="#">This Month</a></li>
-                        <li><a class="dropdown-item" href="#">This Year</a></li>
+                        <li><a class="dropdown-item" href="dashboard.php?period=week">This Week</a></li>
+                        <li><a class="dropdown-item" href="dashboard.php?period=month">This Month</a></li>
+                        <li><a class="dropdown-item" href="dashboard.php?period=year">This Year</a></li>
                     </ul>
                 </div>
             </div>
