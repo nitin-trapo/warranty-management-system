@@ -173,6 +173,33 @@ try {
         $claimsByProductTypeCategory = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
+    // Data for category-based analysis
+    if ($reportType == 'category_analysis') {
+        // Claims by category
+        $categoryQuery = "SELECT cc.name as category_name, COUNT(*) as claim_count
+                         FROM claim_items ci
+                         JOIN claims c ON ci.claim_id = c.id
+                         JOIN claim_categories cc ON ci.category_id = cc.id
+                         WHERE c.created_at BETWEEN ? AND ?
+                         GROUP BY cc.name
+                         ORDER BY claim_count DESC";
+        $stmt = $conn->prepare($categoryQuery);
+        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        $claimsByCategory = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Claims by category and SKU
+        $categorySkuQuery = "SELECT cc.name as category_name, ci.sku, COUNT(*) as claim_count
+                             FROM claim_items ci
+                             JOIN claims c ON ci.claim_id = c.id
+                             JOIN claim_categories cc ON ci.category_id = cc.id
+                             WHERE c.created_at BETWEEN ? AND ?
+                             GROUP BY cc.name, ci.sku
+                             ORDER BY claim_count DESC";
+        $stmt = $conn->prepare($categorySkuQuery);
+        $stmt->execute([$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        $claimsByCategorySku = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
 } catch (PDOException $e) {
     // Log error
     error_log("Error generating reports: " . $e->getMessage());
@@ -196,6 +223,7 @@ try {
                     <option value="claim_performance" <?php echo $reportType == 'claim_performance' ? 'selected' : ''; ?>>Claim Performance</option>
                     <option value="sku_analysis" <?php echo $reportType == 'sku_analysis' ? 'selected' : ''; ?>>SKU Analysis</option>
                     <option value="product_type" <?php echo $reportType == 'product_type' ? 'selected' : ''; ?>>Product Type Analysis</option>
+                    <option value="category_analysis" <?php echo $reportType == 'category_analysis' ? 'selected' : ''; ?>>Category Analysis</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -248,7 +276,7 @@ try {
                             <canvas id="statusChart"></canvas>
                         </div>
                         <div class="table-responsive mt-3">
-                            <table class="table table-sm">
+                            <table class="table table-sm report-table">
                                 <thead>
                                     <tr>
                                         <th>Status</th>
@@ -307,7 +335,7 @@ try {
                         <h6 class="border-bottom pb-2 mb-3">Escalated Claims (Exceeding SLA)</h6>
                         <?php if (count($escalatedClaims) > 0): ?>
                         <div class="table-responsive">
-                            <table class="table table-sm table-hover">
+                            <table class="table table-sm table-hover report-table">
                                 <thead>
                                     <tr>
                                         <th>ID</th>
@@ -388,7 +416,7 @@ try {
                             <canvas id="skuChart"></canvas>
                         </div>
                         <div class="table-responsive mt-3">
-                            <table class="table table-sm">
+                            <table class="table table-sm report-table">
                                 <thead>
                                     <tr>
                                         <th>SKU</th>
@@ -416,7 +444,7 @@ try {
                             <canvas id="categoryChart"></canvas>
                         </div>
                         <div class="table-responsive mt-3">
-                            <table class="table table-sm">
+                            <table class="table table-sm report-table">
                                 <thead>
                                     <tr>
                                         <th>Category</th>
@@ -459,7 +487,7 @@ try {
                             <canvas id="productTypeChart"></canvas>
                         </div>
                         <div class="table-responsive mt-3">
-                            <table class="table table-sm">
+                            <table class="table table-sm report-table">
                                 <thead>
                                     <tr>
                                         <th>Product Type</th>
@@ -485,7 +513,7 @@ try {
                             <canvas id="productTypeCategoryChart"></canvas>
                         </div>
                         <div class="table-responsive mt-3">
-                            <table class="table table-sm">
+                            <table class="table table-sm report-table">
                                 <thead>
                                     <tr>
                                         <th>Product Type</th>
@@ -512,6 +540,79 @@ try {
 </div>
 <?php endif; ?>
 
+<!-- Category Analysis Report -->
+<?php if ($reportType == 'category_analysis'): ?>
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Category-Based Claim Analysis</h5>
+                <small class="text-muted"><?php echo date('M d, Y', strtotime($startDate)); ?> - <?php echo date('M d, Y', strtotime($endDate)); ?></small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Claims by Category -->
+                    <div class="col-md-12 mb-5">
+                        <h6 class="border-bottom pb-2 mb-3">Claims by Category</h6>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="chart-container" style="position: relative; height:400px;">
+                                    <canvas id="categoryChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-md-12 mt-4">
+                                <div class="table-responsive">
+                                    <table class="table table-sm report-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Category</th>
+                                                <th>Claims</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($claimsByCategory as $category): ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($category['category_name']); ?></td>
+                                                <td><?php echo $category['claim_count']; ?></td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Claims by Category and SKU -->
+                    <div class="col-md-12 mb-5">
+                        <h6 class="border-bottom pb-2 mb-3">Claims by Category and SKU</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm report-table">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th>SKU</th>
+                                        <th>Claims</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($claimsByCategorySku as $claim): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($claim['category_name']); ?></td>
+                                        <td><?php echo htmlspecialchars($claim['sku']); ?></td>
+                                        <td><?php echo $claim['claim_count']; ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <?php endif; ?>
 
 <!-- Chart.js -->
@@ -519,6 +620,48 @@ try {
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Add CSS to fix table width issues
+        $('<style>')
+            .prop('type', 'text/css')
+            .html(`
+                .dataTables_wrapper .dataTables_scroll {
+                    overflow-x: hidden;
+                }
+                .table {
+                    width: 100% !important;
+                }
+            `)
+            .appendTo('head');
+            
+        // Initialize DataTables with Excel export for all report tables
+        $('.report-table').DataTable({
+            responsive: true,
+            scrollX: false,
+            autoWidth: false,
+            dom: '<"row align-items-center mb-4"<"col-md-6"B><"col-md-6"f>>rtip',
+            buttons: [
+                {
+                    extend: 'excel',
+                    text: '<i class="fas fa-file-excel"></i> Export to Excel',
+                    className: 'btn btn-sm btn-success',
+                    exportOptions: {
+                        columns: ':visible'
+                    },
+                    title: function() {
+                        return '<?php echo $pageTitle; ?> (<?php echo date('M d, Y', strtotime($startDate)); ?> - <?php echo date('M d, Y', strtotime($endDate)); ?>)';
+                    }
+                }
+            ],
+            language: {
+                search: "_INPUT_",
+                searchPlaceholder: "Search...",
+                lengthMenu: "Show _MENU_ entries",
+                info: "Showing _START_ to _END_ of _TOTAL_ entries",
+                infoEmpty: "Showing 0 to 0 of 0 entries",
+                infoFiltered: "(filtered from _MAX_ total entries)"
+            }
+        });
+
         <?php if ($reportType == 'claim_performance'): ?>
         // Status Chart
         const statusCtx = document.getElementById('statusChart').getContext('2d');
@@ -739,6 +882,44 @@ try {
                 plugins: {
                     legend: {
                         position: 'right'
+                    }
+                }
+            }
+        });
+        <?php endif; ?>
+        
+        <?php if ($reportType == 'category_analysis'): ?>
+        // Category Chart
+        const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+        const categoryChart = new Chart(categoryCtx, {
+            type: 'bar',
+            data: {
+                labels: [
+                    <?php foreach ($claimsByCategory as $category): ?>
+                    '<?php echo htmlspecialchars($category['category_name']); ?>',
+                    <?php endforeach; ?>
+                ],
+                datasets: [{
+                    label: 'Number of Claims',
+                    data: [
+                        <?php foreach ($claimsByCategory as $category): ?>
+                        <?php echo $category['claim_count']; ?>,
+                        <?php endforeach; ?>
+                    ],
+                    backgroundColor: 'rgba(13, 110, 253, 0.7)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
                     }
                 }
             }

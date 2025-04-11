@@ -47,24 +47,31 @@ try {
     
     // Calculate SLA breaches
     $currentDate = new DateTime();
-    $slaBreachQuery = "SELECT COUNT(*) as total FROM claims c 
-                      LEFT JOIN claim_items ci ON c.id = ci.claim_id
-                      LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
+    $slaBreachQuery = "SELECT COUNT(DISTINCT c.id) as total FROM claims c 
+                      JOIN claim_items ci ON c.id = ci.claim_id
+                      JOIN claim_categories cc ON ci.category_id = cc.id 
                       WHERE c.status NOT IN ('approved', 'rejected') 
-                      AND DATE_ADD(c.created_at, INTERVAL IFNULL(cc.sla_days, 7) DAY) < NOW()";
+                      AND cc.sla_days > 0
+                      AND DATE_ADD(c.created_at, INTERVAL cc.sla_days DAY) < NOW()";
     $stmt = $conn->query($slaBreachQuery);
     $slaBreaches = $stmt->fetch()['total'] ?? 0;
     
     // Claims by category
-    $categoryQuery = "SELECT cc.name, COUNT(*) as count 
-                     FROM claims c 
-                     LEFT JOIN claim_items ci ON c.id = ci.claim_id
-                     LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
-                     WHERE cc.name IS NOT NULL
-                     GROUP BY cc.name 
-                     ORDER BY count DESC";
-    $stmt = $conn->query($categoryQuery);
+    $stmt = $conn->query("SELECT cc.name, COUNT(*) as count 
+                         FROM claim_items ci
+                         JOIN claim_categories cc ON ci.category_id = cc.id
+                         GROUP BY ci.category_id
+                         ORDER BY count DESC
+                         LIMIT 5");
     $claimsByCategory = $stmt->fetchAll();
+    
+    // Claims by product type (top 5)
+    $stmt = $conn->query("SELECT ci.product_type, COUNT(*) as count 
+                         FROM claim_items ci
+                         GROUP BY ci.product_type
+                         ORDER BY count DESC
+                         LIMIT 5");
+    $claimsByProductType = $stmt->fetchAll();
     
     // Claims created today
     $todayQuery = "SELECT COUNT(*) as total FROM claims WHERE DATE(created_at) = CURDATE()";
@@ -94,6 +101,7 @@ try {
     $recentClaims = [];
     $slaBreaches = 0;
     $claimsByCategory = [];
+    $claimsByProductType = [];
     $claimsToday = 0;
     $resolvedToday = 0;
 }
@@ -285,9 +293,9 @@ try {
     </div>
 </div>
 
-<!-- Recent Claims & System Info -->
+<!-- Recent Claims -->
 <div class="row">
-    <div class="col-lg-8 mb-3">
+    <div class="col-lg-12 mb-3">
         <div class="card h-100">
             <div class="card-header py-2 d-flex justify-content-between align-items-center">
                 <h6 class="mb-0">Recent Claims</h6>
@@ -357,77 +365,14 @@ try {
             </div>
         </div>
     </div>
-    
-    <div class="col-lg-4 mb-3">
-        <div class="card h-100">
-            <div class="card-header py-2">
-                <h6 class="mb-0">System Information</h6>
-            </div>
-            <div class="card-body p-2">
-                <ul class="list-group list-group-flush">
-                    <li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
-                        <small>System Version</small>
-                        <span class="badge bg-primary"><?php echo APP_VERSION; ?></span>
-                    </li>
-                    <li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
-                        <small>PHP Version</small>
-                        <span class="badge bg-secondary"><?php echo phpversion(); ?></span>
-                    </li>
-                    <li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
-                        <small>Server Time</small>
-                        <span class="badge bg-info"><?php echo date('Y-m-d H:i:s'); ?></span>
-                    </li>
-                    <li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
-                        <small>Database</small>
-                        <span class="badge bg-success">Connected</span>
-                    </li>
-                    <li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
-                        <small>ODIN API Status</small>
-                        <span class="badge bg-warning">Not Checked</span>
-                    </li>
-                </ul>
-                
-                <div class="mt-2">
-                    <h6 class="small mb-2">System Health</h6>
-                    <div class="mb-2">
-                        <div class="d-flex justify-content-between mb-1 small">
-                            <span>Database</span>
-                            <span>85%</span>
-                        </div>
-                        <div class="progress" style="height: 5px;">
-                            <div class="progress-bar bg-success" style="width: 85%"></div>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <div class="d-flex justify-content-between mb-1 small">
-                            <span>Disk Space</span>
-                            <span>65%</span>
-                        </div>
-                        <div class="progress" style="height: 5px;">
-                            <div class="progress-bar bg-info" style="width: 65%"></div>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <div class="d-flex justify-content-between mb-1 small">
-                            <span>Memory Usage</span>
-                            <span>45%</span>
-                        </div>
-                        <div class="progress" style="height: 5px;">
-                            <div class="progress-bar bg-primary" style="width: 45%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <!-- Claims by Category -->
 <div class="row">
-    <div class="col-lg-12 mb-3">
+    <div class="col-lg-6 mb-3">
         <div class="card h-100">
             <div class="card-header py-2">
-                <h6 class="mb-0">Claims by Category</h6>
+                <h6 class="mb-0">Claims by Category (Top 5)</h6>
             </div>
             <div class="card-body p-2">
                 <div class="table-responsive">
@@ -443,6 +388,34 @@ try {
                                 <tr>
                                     <td><?php echo htmlspecialchars($category['name']); ?></td>
                                     <td><?php echo $category['count']; ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header py-2">
+                <h6 class="mb-0">Claims by Product Type (Top 5)</h6>
+            </div>
+            <div class="card-body p-2">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Product Type</th>
+                                <th>Claims</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($claimsByProductType as $productType): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($productType['product_type']); ?></td>
+                                    <td><?php echo $productType['count']; ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

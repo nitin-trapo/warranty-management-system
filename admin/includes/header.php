@@ -55,6 +55,41 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             --light-text-color: #64748b;
         }
         
+        /* DataTables Select Styling */
+        div.dataTables_wrapper div.dataTables_length select {
+            width: auto;
+            display: inline-block;
+            padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+            font-size: 0.9rem;
+            font-weight: 400;
+            line-height: 1.5;
+            color: var(--text-color);
+            background-color: #fff;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 16px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            appearance: none;
+            transition: border-color .15s ease-in-out,box-shadow .15s ease-in-out;
+        }
+        
+        /* Remove focus styles */
+        div.dataTables_wrapper div.dataTables_length select:focus {
+            outline: none;
+            box-shadow: none;
+            border-color: #ced4da;
+        }
+        
+        /* Remove focus styles from all buttons */
+        button:focus, 
+        .btn:focus,
+        .page-link:focus {
+            outline: none !important;
+            box-shadow: none !important;
+        }
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--background-color);
