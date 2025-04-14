@@ -150,7 +150,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         .sidebar {
             background-color: var(--sidebar-color);
             color: #fff;
-            width: 250px;
+            width: 200px;
             position: fixed;
             top: 0;
             left: 0;
@@ -161,7 +161,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         }
         
         .sidebar-collapsed {
-            width: 60px;
+            width: 50px;
         }
         
         .sidebar-header {
@@ -247,14 +247,14 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         /* Main Content Styles */
         .main-content {
             flex: 1;
-            margin-left: 250px;
+            margin-left: 200px;
             transition: all 0.3s;
-            width: calc(100% - 250px);
+            width: calc(100% - 200px);
         }
         
         .main-content-expanded {
-            margin-left: 60px;
-            width: calc(100% - 60px);
+            margin-left: 50px;
+            width: calc(100% - 50px);
         }
         
         /* Navbar Styles */
@@ -400,17 +400,17 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         /* Responsive Styles */
         @media (max-width: 992px) {
             .sidebar {
-                width: 60px;
+                width: 50px;
             }
             
             .sidebar-collapsed {
                 width: 0;
-                left: -60px;
+                left: -50px;
             }
             
             .main-content {
-                margin-left: 60px;
-                width: calc(100% - 60px);
+                margin-left: 50px;
+                width: calc(100% - 50px);
             }
             
             .main-content-expanded {
