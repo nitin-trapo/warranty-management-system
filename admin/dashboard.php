@@ -128,7 +128,7 @@ try {
                           AND status IN ('approved', 'rejected')";
     $stmt = $conn->query($resolvedTodayQuery);
     $resolvedToday = $stmt->fetch()['total'] ?? 0;
-    
+        
     // Claims by month (for chart)
     $claimsByMonthQuery = "SELECT 
             MONTH(created_at) as month, 
