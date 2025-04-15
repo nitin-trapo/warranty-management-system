@@ -122,7 +122,7 @@ try {
     $stmt = $conn->query($todayQuery);
     $claimsToday = $stmt->fetch()['total'] ?? 0;
     
-    // Claims resolved today
+    // Claims resolved today - using a query that works with the actual database structure
     $resolvedTodayQuery = "SELECT COUNT(*) as total FROM claims 
                           WHERE DATE(updated_at) = CURDATE() 
                           AND status IN ('approved', 'rejected')";
