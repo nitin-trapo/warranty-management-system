@@ -10,23 +10,103 @@
     <!-- DataTables JS -->
     <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
-    
-    <!-- DataTables Buttons Extension -->
     <script src="https://cdn.datatables.net/buttons/2.2.2/js/dataTables.buttons.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.bootstrap5.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.html5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.print.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.colVis.min.js"></script>
-    
-    <!-- DataTables Responsive Extension -->
     <script src="https://cdn.datatables.net/responsive/2.2.9/js/dataTables.responsive.min.js"></script>
     <script src="https://cdn.datatables.net/responsive/2.2.9/js/responsive.bootstrap5.min.js"></script>
     
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    
+    <!-- Notification Functions -->
+    <script>
+        // Mark a single notification as read
+        function markNotificationAsRead(notificationId, element) {
+            // Prevent default action if it's a link
+            if (element) {
+                event.preventDefault();
+            }
+            
+            // Send AJAX request to mark notification as read
+            $.ajax({
+                url: 'ajax/mark_notification_read.php',
+                type: 'POST',
+                data: {
+                    notification_id: notificationId
+                },
+                success: function(response) {
+                    try {
+                        const result = JSON.parse(response);
+                        if (result.success) {
+                            // Update notification count
+                            updateNotificationCount();
+                            
+                            // If element is provided, redirect to the link
+                            if (element && element.href && element.href !== 'javascript:void(0);') {
+                                window.location.href = element.href;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error parsing response:', e);
+                    }
+                }
+            });
+        }
+        
+        // Mark all notifications as read
+        function markAllNotificationsAsRead() {
+            // Send AJAX request to mark all notifications as read
+            $.ajax({
+                url: 'ajax/mark_all_notifications_read.php',
+                type: 'POST',
+                success: function(response) {
+                    try {
+                        const result = JSON.parse(response);
+                        if (result.success) {
+                            // Update notification count
+                            updateNotificationCount();
+                            
+                            // Hide all notifications in dropdown
+                            $('.notification-item').remove();
+                            $('.notification-dropdown').append('<div class="notification-empty"><p>No new notifications</p></div>');
+                            $('.mark-all-read').hide();
+                        }
+                    } catch (e) {
+                        console.error('Error parsing response:', e);
+                    }
+                }
+            });
+        }
+        
+        // Update notification count
+        function updateNotificationCount() {
+            // Send AJAX request to get notification count
+            $.ajax({
+                url: 'ajax/get_notification_count.php',
+                type: 'GET',
+                success: function(response) {
+                    try {
+                        const result = JSON.parse(response);
+                        const badge = $('#notificationsDropdown .notification-badge');
+                        
+                        if (result.count > 0) {
+                            // Update or create badge
+                            if (badge.length > 0) {
+                                badge.text(result.count);
+                            } else {
+                                $('#notificationsDropdown').append('<span class="badge rounded-pill bg-danger notification-badge">' + result.count + '</span>');
+                            }
+                        } else {
+                            // Remove badge if count is 0
+                            badge.remove();
+                        }
+                    } catch (e) {
+                        console.error('Error parsing response:', e);
+                    }
+                }
+            });
+        }
+    </script>
     
     <!-- Custom JS -->
     <script>

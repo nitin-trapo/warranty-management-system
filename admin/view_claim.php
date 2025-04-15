@@ -32,7 +32,17 @@ $claimId = (int)$_GET['id'];
 // Get claim details
 $claim = null;
 try {
-    $query = "SELECT c.* FROM claims c WHERE c.id = ?";
+    $query = "SELECT c.*, 
+              creator.username as creator_username, 
+              creator.first_name as creator_first_name, 
+              creator.last_name as creator_last_name,
+              assignee.username as assignee_username, 
+              assignee.first_name as assignee_first_name, 
+              assignee.last_name as assignee_last_name
+              FROM claims c 
+              LEFT JOIN users creator ON c.created_by = creator.id
+              LEFT JOIN users assignee ON c.assigned_to = assignee.id
+              WHERE c.id = ?";
     $stmt = $conn->prepare($query);
     $stmt->execute([$claimId]);
     $claim = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -211,8 +221,34 @@ try {
                         <td><?php echo date('M d, Y h:i A', strtotime($claim['created_at'])); ?></td>
                     </tr>
                     <tr>
+                        <th>Created By:</th>
+                        <td>
+                            <?php if (!empty($claim['creator_first_name']) && !empty($claim['creator_last_name'])): ?>
+                                <?php echo htmlspecialchars($claim['creator_first_name'] . ' ' . $claim['creator_last_name']); ?>
+                                <span class="text-muted">(<?php echo htmlspecialchars($claim['creator_username']); ?>)</span>
+                            <?php else: ?>
+                                <span class="text-muted">Unknown</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Assigned To:</th>
+                        <td>
+                            <?php if (!empty($claim['assignee_first_name']) && !empty($claim['assignee_last_name'])): ?>
+                                <?php echo htmlspecialchars($claim['assignee_first_name'] . ' ' . $claim['assignee_last_name']); ?>
+                                <span class="text-muted">(<?php echo htmlspecialchars($claim['assignee_username']); ?>)</span>
+                            <?php elseif (!empty($claim['assigned_to'])): ?>
+                                <span class="text-muted">User ID: <?php echo $claim['assigned_to']; ?></span>
+                            <?php else: ?>
+                                <span class="text-muted">Not Assigned</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
                         <th>Last Updated:</th>
-                        <td><?php echo $claim['updated_at'] ? date('M d, Y h:i A', strtotime($claim['updated_at'])) : 'N/A'; ?></td>
+                        <td>
+                            <?php echo !empty($claim['updated_at']) ? date('M d, Y h:i A', strtotime($claim['updated_at'])) : 'N/A'; ?>
+                        </td>
                     </tr>
                 </table>
             </div>

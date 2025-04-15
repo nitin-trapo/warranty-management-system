@@ -735,6 +735,13 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                                     <i class="fas fa-edit"></i>
                                 </a>
                                 <?php if (isAdmin()): ?>
+                                <button type="button" class="btn btn-outline-success quick-assign-claim" 
+                                        data-id="<?php echo $claim['id']; ?>"
+                                        data-claim-number="<?php echo !empty($claim['claim_number']) ? htmlspecialchars($claim['claim_number']) : ''; ?>"
+                                        data-order="<?php echo htmlspecialchars($claim['order_id']); ?>"
+                                        title="Assign Claim">
+                                    <i class="fas fa-user-check"></i>
+                                </button>
                                 <button type="button" class="btn btn-outline-danger delete-claim" 
                                         data-id="<?php echo $claim['id']; ?>"
                                         data-order="<?php echo htmlspecialchars($claim['order_id']); ?>"
@@ -749,6 +756,88 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Claim Modal -->
+<div class="modal fade" id="deleteClaimModal" tabindex="-1" aria-labelledby="deleteClaimModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteClaimModalLabel">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the claim for order <strong id="delete_order_id"></strong>?</p>
+                <p class="text-danger">This action cannot be undone. All claim details, photos, and videos will be permanently deleted.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <a href="#" id="confirmDeleteBtn" class="btn btn-danger">Delete Claim</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Assign Claim Modal -->
+<div class="modal fade" id="quickAssignModal" tabindex="-1" aria-labelledby="quickAssignModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="quickAssignModalLabel">Assign Claim</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="quickAssignAlert" class="alert" style="display: none;"></div>
+                
+                <form id="quickAssignForm">
+                    <input type="hidden" id="quick_claim_id" name="claim_id">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Claim Information</label>
+                        <div class="form-control bg-light" id="claimInfoDisplay"></div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="quick_agent_id" class="form-label">Select CS Agent</label>
+                        <select class="form-select" id="quick_agent_id" name="agent_id" required>
+                            <option value="">-- Select Agent --</option>
+                            <?php
+                            // Get all active CS agents
+                            try {
+                                $stmt = $conn->prepare("
+                                    SELECT id, username, first_name, last_name
+                                    FROM users
+                                    WHERE role = 'cs_agent' AND status = 'active'
+                                    ORDER BY first_name, last_name
+                                ");
+                                $stmt->execute();
+                                $csAgents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                                
+                                foreach ($csAgents as $agent) {
+                                    echo '<option value="' . $agent['id'] . '">' . 
+                                        htmlspecialchars($agent['first_name'] . ' ' . $agent['last_name'] . ' (' . $agent['username'] . ')') . 
+                                        '</option>';
+                                }
+                            } catch (PDOException $e) {
+                                // Log error
+                                error_log("Error retrieving CS agents: " . $e->getMessage());
+                            }
+                            ?>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="quick_notes" class="form-label">Assignment Notes (Optional)</label>
+                        <textarea class="form-control" id="quick_notes" name="notes" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmAssignBtn">Assign Claim</button>
+            </div>
         </div>
     </div>
 </div>
@@ -869,26 +958,6 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                         </form>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Delete Claim Modal -->
-<div class="modal fade" id="deleteClaimModal" tabindex="-1" aria-labelledby="deleteClaimModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="deleteClaimModalLabel">Confirm Delete</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to delete the claim for order <strong id="delete_order_id"></strong>?</p>
-                <p class="text-danger">This action cannot be undone. All claim details, photos, and videos will be permanently deleted.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <a href="#" id="confirmDeleteBtn" class="btn btn-danger">Delete Claim</a>
             </div>
         </div>
     </div>
@@ -1297,6 +1366,8 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
             }
         });
     });
+}
+
 </script>
 
 <script>
@@ -1348,6 +1419,24 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
             console.log('Delete button href:', $('#confirmDeleteBtn').attr('href'));
         });
 
+        // Quick assign claim modal
+        $(document).on('click', '.quick-assign-claim', function() {
+            const claimId = $(this).data('id');
+            const claimNumber = $(this).data('claim-number');
+            const orderId = $(this).data('order');
+            
+            $('#quick_claim_id').val(claimId);
+            $('#claimInfoDisplay').html(`Claim #${claimNumber} for Order ${orderId}`);
+            
+            $('#quickAssignModal').modal('show');
+            
+            // Debug
+            console.log('Quick assign claim clicked:', { claimId, claimNumber, orderId });
+            
+            // Log for debugging
+            console.log('Quick assign modal opened for claim:', { claimId, claimNumber, orderId });
+        });
+        
         // Wait a short moment to ensure DataTable is initialized by other scripts
         setTimeout(function() {
             // Check if DataTable is already initialized
@@ -1489,3 +1578,113 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
         text-overflow: ellipsis;
     }
 </style>
+
+<script>
+    $(document).ready(function() {
+        // Quick assign claim modal
+        $(document).on('click', '.quick-assign-claim', function() {
+            const claimId = $(this).data('id');
+            const claimNumber = $(this).data('claim-number');
+            const orderId = $(this).data('order');
+            
+            $('#quick_claim_id').val(claimId);
+            
+            // Display claim info with proper formatting
+            let displayText = `Claim #${claimId}`;
+            if (claimNumber) {
+                displayText += ` (${claimNumber})`;
+            }
+            displayText += ` for Order ${orderId}`;
+            
+            $('#claimInfoDisplay').html(displayText);
+            
+            // Reset form and alerts
+            $('#quick_agent_id').val('');
+            $('#quick_notes').val('');
+            $('#quickAssignAlert').hide();
+            
+            $('#quickAssignModal').modal('show');
+            
+            // Log for debugging
+            console.log('Quick assign modal opened for claim:', { claimId, claimNumber, orderId });
+        });
+        
+        // Handle confirm assign button click
+        $('#confirmAssignBtn').on('click', function() {
+            const claimId = $('#quick_claim_id').val();
+            const agentId = $('#quick_agent_id').val();
+            const notes = $('#quick_notes').val();
+            
+            // Validate form
+            if (!agentId) {
+                showQuickAssignAlert('danger', 'Please select a CS agent');
+                return;
+            }
+            
+            // Disable button and show loading state
+            const assignBtn = $(this);
+            const originalBtnText = assignBtn.html();
+            assignBtn.html('<i class="fas fa-spinner fa-spin me-1"></i> Assigning...');
+            assignBtn.prop('disabled', true);
+            
+            // Send AJAX request
+            $.ajax({
+                url: 'ajax/assign_claim.php',
+                type: 'POST',
+                data: {
+                    claim_id: claimId,
+                    agent_id: agentId,
+                    notes: notes
+                },
+                dataType: 'json',
+                success: function(response) {
+                    // Reset button
+                    assignBtn.html(originalBtnText);
+                    assignBtn.prop('disabled', false);
+                    
+                    if (response.success) {
+                        // Show success message
+                        showQuickAssignAlert('success', response.message);
+                        
+                        // Refresh the page after a short delay
+                        setTimeout(function() {
+                            location.reload();
+                        }, 1500);
+                    } else {
+                        // Show error message
+                        showQuickAssignAlert('danger', response.message);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    // Reset button
+                    assignBtn.html(originalBtnText);
+                    assignBtn.prop('disabled', false);
+                    
+                    // Show error message
+                    showQuickAssignAlert('danger', 'An error occurred while assigning the claim. Please try again.');
+                    console.error('AJAX Error:', error);
+                }
+            });
+        });
+        
+        // Function to show quick assign alert
+        function showQuickAssignAlert(type, message) {
+            const alertEl = $('#quickAssignAlert');
+            alertEl.removeClass('alert-success alert-danger alert-warning alert-info')
+                  .addClass('alert-' + type)
+                  .html(message)
+                  .show();
+        }
+        
+        // Wait a short moment to ensure DataTable is initialized by other scripts
+        setTimeout(function() {
+            // Check if DataTable is already initialized
+            if ($.fn.DataTable.isDataTable('#claimsTable')) {
+                // Get the DataTable instance and update its order
+                var table = $('#claimsTable').DataTable();
+                table.order([0, 'desc']).draw();
+                console.log('Claims table sorting updated to show latest claims first');
+            }
+        }, 100);
+    });
+</script>

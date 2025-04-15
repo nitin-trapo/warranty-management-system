@@ -13,12 +13,17 @@ date_default_timezone_set(TIMEZONE);
 
 require_once __DIR__ . '/../../includes/auth_helper.php';
 require_once __DIR__ . '/../../includes/alert_helper.php';
+require_once __DIR__ . '/../../includes/notification_helper.php';
 
 // Require admin or CS agent privileges
 requireAdminOrCsAgent();
 
 // Get admin user data
 $user = getUserById($_SESSION['user_id']);
+
+// Get unread notifications
+$notifications = getUnreadNotifications($user['id'], 5);
+$notificationCount = getNotificationCount($user['id']);
 
 // Get current page
 $currentPage = basename($_SERVER['PHP_SELF']);
@@ -53,6 +58,107 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             --card-color: #ffffff;
             --text-color: #1e293b;
             --light-text-color: #64748b;
+        }
+        
+        /* Notification Styles */
+        .notification-dropdown {
+            width: 320px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .notification-title {
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .mark-all-read {
+            font-size: 0.8rem;
+            color: var(--primary-color);
+            cursor: pointer;
+            text-decoration: none;
+        }
+        
+        .notification-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
+        }
+        
+        .notification-item:hover {
+            background-color: #f5f7fa;
+        }
+        
+        .notification-item a {
+            display: flex;
+            text-decoration: none;
+            color: var(--text-color);
+        }
+        
+        .notification-icon {
+            margin-right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: #e5e7eb;
+            color: var(--primary-color);
+        }
+        
+        .notification-icon.info { background-color: #dbeafe; color: #2563eb; }
+        .notification-icon.success { background-color: #dcfce7; color: #16a34a; }
+        .notification-icon.warning { background-color: #fef3c7; color: #d97706; }
+        .notification-icon.danger { background-color: #fee2e2; color: #dc2626; }
+        
+        .notification-content {
+            flex: 1;
+        }
+        
+        .notification-message {
+            margin: 0 0 3px 0;
+            font-size: 0.9rem;
+        }
+        
+        .notification-time {
+            font-size: 0.75rem;
+            color: var(--light-text-color);
+        }
+        
+        .notification-empty {
+            padding: 20px;
+            text-align: center;
+            color: var(--light-text-color);
+        }
+        
+        .notification-footer {
+            padding: 10px;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .notification-footer a {
+            font-size: 0.85rem;
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        
+        .notification-badge {
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            font-size: 0.65rem;
+            padding: 0.15rem 0.35rem;
         }
         
         /* DataTables Select Styling */
@@ -552,17 +658,58 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             
             <ul class="navbar-nav d-flex flex-row">
                 <li class="nav-item dropdown me-2">
-                    <a class="nav-link dropdown-toggle" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a class="nav-link dropdown-toggle position-relative" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fas fa-bell"></i>
-                        <span class="badge rounded-pill bg-danger">3</span>
+                        <?php if ($notificationCount > 0): ?>
+                        <span class="badge rounded-pill bg-danger notification-badge"><?php echo $notificationCount; ?></span>
+                        <?php endif; ?>
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="notificationsDropdown">
-                        <li><h6 class="dropdown-header">Notifications</h6></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="#">New claim submitted</a></li>
-                        <li><a class="dropdown-item" href="#">SLA breach alert</a></li>
-                        <li><a class="dropdown-item" href="#">System update available</a></li>
-                    </ul>
+                    <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationsDropdown">
+                        <div class="notification-header">
+                            <h6 class="notification-title">Notifications</h6>
+                            <?php if ($notificationCount > 0): ?>
+                            <a href="javascript:void(0);" class="mark-all-read" onclick="markAllNotificationsAsRead()">Mark all as read</a>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <?php if (count($notifications) > 0): ?>
+                            <?php foreach ($notifications as $notification): ?>
+                            <div class="notification-item">
+                                <a href="<?php echo !empty($notification['link']) ? htmlspecialchars($notification['link']) : 'javascript:void(0);'; ?>" onclick="markNotificationAsRead(<?php echo $notification['id']; ?>, this)">
+                                    <div class="notification-icon <?php echo htmlspecialchars($notification['type']); ?>">
+                                        <?php
+                                        $icon = 'info-circle';
+                                        switch ($notification['type']) {
+                                            case 'success':
+                                                $icon = 'check-circle';
+                                                break;
+                                            case 'warning':
+                                                $icon = 'exclamation-triangle';
+                                                break;
+                                            case 'danger':
+                                                $icon = 'exclamation-circle';
+                                                break;
+                                        }
+                                        ?>
+                                        <i class="fas fa-<?php echo $icon; ?>"></i>
+                                    </div>
+                                    <div class="notification-content">
+                                        <p class="notification-message"><?php echo htmlspecialchars($notification['message']); ?></p>
+                                        <p class="notification-time"><?php echo date('M j, g:i a', strtotime($notification['created_at'])); ?></p>
+                                    </div>
+                                </a>
+                            </div>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="notification-empty">
+                                <p>No new notifications</p>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <div class="notification-footer">
+                            <a href="notifications.php">View all notifications</a>
+                        </div>
+                    </div>
                 </li>
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">

@@ -21,6 +21,9 @@ require_once 'includes/header.php';
 // Include database connection
 require_once '../config/database.php';
 
+// Include notification helper
+require_once '../includes/notification_helper.php';
+
 // Establish database connection
 $conn = getDbConnection();
 
@@ -72,6 +75,18 @@ if (isset($_POST['action']) && $_POST['action'] === 'add_user') {
         ");
         
         $stmt->execute([$username, $defaultPassword, $email, $firstName, $lastName, $role, $status]);
+        
+        // Get the new user ID
+        $newUserId = $conn->lastInsertId();
+        
+        // Create notification for admin users
+        $roleText = ($role === 'admin') ? 'Administrator' : 'CS Agent';
+        $notificationType = 'success';
+        $notificationMessage = "New $roleText account created: $firstName $lastName ($username)";
+        $notificationLink = 'users.php';
+        
+        // Add notification for all admin users (user_id = 0 means all users)
+        addNotification($notificationType, $notificationMessage, 0, $notificationLink);
         
         setSuccessAlert('User added successfully');
     } catch (Exception $e) {
