@@ -368,31 +368,16 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
 // Get claims from database with all associated items
 $claims = [];
 
-// Modify query based on user role
-if (isCsAgent()) {
-    $csAgentId = $_SESSION['user_id'];
-    $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
-                       c.created_at, c.updated_at, c.created_by, c.claim_number,
-                       cc.name as category_name, cc.sla_days 
-                FROM claims c
-                LEFT JOIN claim_items ci ON c.id = ci.claim_id
-                LEFT JOIN claim_categories cc ON ci.category_id = cc.id
-                WHERE c.assigned_to = :csAgentId
-                GROUP BY c.id
-                ORDER BY c.created_at DESC";
-    $stmt = $conn->prepare($claimsQuery);
-    $stmt->bindParam(':csAgentId', $csAgentId);
-} else {
-    $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
-                       c.created_at, c.updated_at, c.created_by, c.claim_number,
-                       cc.name as category_name, cc.sla_days 
-                FROM claims c
-                LEFT JOIN claim_items ci ON c.id = ci.claim_id
-                LEFT JOIN claim_categories cc ON ci.category_id = cc.id
-                GROUP BY c.id
-                ORDER BY c.created_at DESC";
-    $stmt = $conn->prepare($claimsQuery);
-}
+// Use the same query for both admins and CS agents to show all claims
+$claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
+                   c.created_at, c.updated_at, c.created_by, c.claim_number, c.assigned_to,
+                   cc.name as category_name, cc.sla_days 
+            FROM claims c
+            LEFT JOIN claim_items ci ON c.id = ci.claim_id
+            LEFT JOIN claim_categories cc ON ci.category_id = cc.id
+            GROUP BY c.id
+            ORDER BY c.created_at DESC";
+$stmt = $conn->prepare($claimsQuery);
 $stmt->execute();
 $claims = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -627,11 +612,11 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     <tr>
                         <th>Claim #</th>
                         <th>Order ID</th>
-                        <th>Customer</th>
                         <th>Products & Categories</th>
                         <th>SLA</th>
                         <th>Status</th>
                         <th>Created At</th>
+                        <th>Assignment</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -644,34 +629,41 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     <?php foreach ($claims as $claim): ?>
                     <tr data-claim-id="<?php echo $claim['id']; ?>">
                         <td data-sort="<?php echo $claim['id']; ?>">
-                            <span class="badge bg-secondary">#<?php echo $claim['id']; ?></span>
                             <?php if (!empty($claim['claim_number'])): ?>
-                                <span class="badge bg-info ms-1"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
+                                <span class="badge bg-info"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
+                            <?php else: ?>
+                                <span class="badge bg-secondary">No Number</span>
                             <?php endif; ?>
                         </td>
                         <td><?php echo htmlspecialchars($claim['order_id']); ?></td>
-                        <td><?php echo htmlspecialchars($claim['customer_name']); ?></td>
                         <td>
                             <?php if (isset($claimItems[$claim['id']])): ?>
-                                <div class="product-list">
-                                <?php foreach ($claimItems[$claim['id']] as $index => $item): 
-                                    // Get category name for this item
-                                    $catStmt = $conn->prepare("SELECT name FROM claim_categories WHERE id = ?");
-                                    $catStmt->execute([$item['category_id']]);
-                                    $categoryName = $catStmt->fetchColumn() ?: 'N/A';
-                                ?>
-                                    <div class="product-item mb-1">
-                                        <strong class="d-block"><?php echo htmlspecialchars($item['sku']); ?></strong>
-                                        <small class="text-muted d-block"><?php echo htmlspecialchars($item['product_name']); ?></small>
-                                        <span class="badge bg-secondary"><?php echo htmlspecialchars($categoryName); ?></span>
-                                    </div>
-                                    <?php if ($index < count($claimItems[$claim['id']]) - 1): ?>
-                                        <hr class="my-1">
-                                    <?php endif; ?>
-                                <?php endforeach; ?>
-                                </div>
+                                <button type="button" class="btn btn-sm btn-primary view-products-btn" 
+                                        data-bs-toggle="tooltip" 
+                                        data-bs-html="true"
+                                        data-bs-title="<?php 
+                                            $tooltipContent = '<div class=\'product-tooltip\'>';
+                                            foreach ($claimItems[$claim['id']] as $item) {
+                                                // Get category name for this item
+                                                $catStmt = $conn->prepare("SELECT name FROM claim_categories WHERE id = ?");
+                                                $catStmt->execute([$item['category_id']]);
+                                                $categoryName = $catStmt->fetchColumn() ?: 'N/A';
+                                                
+                                                $tooltipContent .= '<div class=\'product-item\'>';
+                                                $tooltipContent .= '<strong>' . htmlspecialchars($item['sku']) . '</strong><br>';
+                                                $tooltipContent .= '<span>' . htmlspecialchars($item['product_name']) . '</span><br>';
+                                                $tooltipContent .= '<span class=\'badge bg-secondary\'>' . htmlspecialchars($categoryName) . '</span>';
+                                                $tooltipContent .= '</div>';
+                                                $tooltipContent .= '<hr class=\'my-1\'>';
+                                            }
+                                            $tooltipContent = rtrim($tooltipContent, '<hr class=\'my-1\'>');
+                                            $tooltipContent .= '</div>';
+                                            echo htmlspecialchars($tooltipContent);
+                                        ?>">
+                                    <i class="fas fa-box me-1"></i> <?php echo count($claimItems[$claim['id']]); ?>
+                                </button>
                             <?php else: ?>
-                                <span class="text-muted">N/A</span>
+                                <span class="badge bg-light text-dark">0</span>
                             <?php endif; ?>
                         </td>
                         <td>
@@ -726,6 +718,19 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                             </span>
                         </td>
                         <td><?php echo date('M d, Y h:i A', strtotime($claim['created_at'])); ?></td>
+                        <td>
+                            <?php if ($claim['assigned_to']): ?>
+                                <?php
+                                // Get assigned user's name
+                                $stmt = $conn->prepare("SELECT first_name, last_name FROM users WHERE id = ?");
+                                $stmt->execute([$claim['assigned_to']]);
+                                $assignedUser = $stmt->fetch(PDO::FETCH_ASSOC);
+                                ?>
+                                <span class="badge bg-primary"><?php echo htmlspecialchars($assignedUser['first_name'] . ' ' . $assignedUser['last_name']); ?></span>
+                            <?php else: ?>
+                                <span class="badge bg-secondary">Unassigned</span>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <div class="btn-group btn-group-sm">
                                 <a href="view_claim.php?id=<?php echo $claim['id']; ?>" class="btn btn-outline-primary" title="View Claim">
@@ -1253,8 +1258,6 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     contentType: false,
                     dataType: 'json',
                     success: function(response) {
-                        debugLog('AJAX submission successful', response);
-                        
                         // Reset button
                         submitBtn.innerHTML = originalBtnText;
                         submitBtn.disabled = false;
@@ -1293,8 +1296,6 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                         }
                     },
                     error: function(xhr, status, error) {
-                        debugLog('AJAX submission error', { xhr, status, error });
-                        
                         // Reset button
                         submitBtn.innerHTML = originalBtnText;
                         submitBtn.disabled = false;
@@ -1450,6 +1451,33 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
     });
 </script>
 
+<script>
+    $(document).ready(function() {
+        // Initialize tooltips with custom options
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        const tooltipOptions = {
+            trigger: 'click',
+            html: true,
+            placement: 'right',
+            container: 'body',
+            customClass: 'product-tooltip-container'
+        };
+        [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl, tooltipOptions));
+        
+        // Close tooltips when clicking elsewhere
+        $(document).on('click', function(e) {
+            if (!$(e.target).closest('.view-products-btn, .tooltip').length) {
+                $('.tooltip').remove();
+            }
+        });
+        
+        // Prevent multiple tooltips
+        $('.view-products-btn').on('click', function() {
+            $('.tooltip').not($(this).data('bs-tooltip')).remove();
+        });
+    });
+</script>
+
 <style>
     /* DataTable styling */
     .dataTables_wrapper .dataTables_length, 
@@ -1457,125 +1485,145 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
         margin-bottom: 15px;
     }
     
-    .dataTables_wrapper .dataTables_filter input {
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-        padding: 6px 12px;
-        margin-left: 5px;
-    }
-    
-    .dataTables_wrapper .dataTables_length select {
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-        padding: 6px 12px;
-        margin: 0 5px;
-    }
-    
-    .dataTables_wrapper .dataTables_info {
-        padding-top: 10px;
-    }
-    
+    .dataTables_wrapper .dataTables_info, 
     .dataTables_wrapper .dataTables_paginate {
-        padding-top: 10px;
-    }
-    
-    .dataTables_wrapper .dataTables_paginate .paginate_button {
-        padding: 5px 10px;
-        margin-left: 5px;
-        border-radius: 4px;
-    }
-    
-    .dataTables_wrapper .dataTables_paginate .paginate_button.current {
-        background: var(--primary-color);
-        color: white !important;
-        border: 1px solid var(--primary-color);
-    }
-    
-    .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
-        background: var(--accent-color);
-        color: white !important;
-        border: 1px solid var(--accent-color);
+        margin-top: 15px;
     }
     
     /* Table styling */
     #claimsTable {
         border-collapse: separate;
         border-spacing: 0;
+        width: 100% !important;
     }
     
     #claimsTable th {
+        background-color: #f8f9fa;
         font-weight: 600;
         padding: 12px 15px;
+        border-bottom: 2px solid #dee2e6;
     }
     
     #claimsTable td {
         padding: 12px 15px;
         vertical-align: middle;
+        border-bottom: 1px solid #e9ecef;
     }
     
-    /* Button styling */
-    .btn-group-sm > .btn {
+    /* Status badges */
+    .badge {
+        font-size: 0.8rem;
+        font-weight: 500;
+        padding: 0.35em 0.65em;
+    }
+    
+    /* Product button styling */
+    .view-products-btn {
+        width: 50px;
+        height: 30px;
         padding: 0.25rem 0.5rem;
-    }
-    
-    /* Fix for page title and button layout */
-    .page-title {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-    
-    .page-title h1 {
-        margin-bottom: 0;
-    }
-    
-    .button-container {
-        min-width: 150px;
-        text-align: right;
-    }
-    
-    .add-claim-btn {
-        min-width: 140px;
-        height: 38px;
+        font-size: 0.8rem;
+        border-radius: 4px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid var(--primary-color);
-        background-color: var(--primary-color);
-        color: white;
-        font-weight: 500;
-        padding: 0.375rem 0.75rem;
-        border-radius: 0.25rem;
-        transition: none;
+        transition: all 0.2s ease;
     }
     
-    .add-claim-btn:hover,
-    .add-claim-btn:focus,
-    .add-claim-btn:active {
-        background-color: var(--secondary-color) !important;
-        border-color: var(--secondary-color) !important;
-        color: white !important;
-        box-shadow: none !important;
-        transform: none !important;
+    .view-products-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     }
     
-    /* Product list styling */
-    .product-list {
-        max-width: 250px;
+    /* Custom tooltip styling */
+    .product-tooltip-container {
+        max-width: 350px !important;
     }
-    .product-item {
-        padding: 4px 0;
+    
+    .tooltip {
+        opacity: 1 !important;
     }
-    .product-item strong {
-        font-size: 0.9rem;
+    
+    .tooltip-inner {
+        max-width: 350px;
+        padding: 15px;
+        text-align: left;
+        background-color: #fff !important;
+        color: #212529 !important;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
     }
-    .product-item small {
-        font-size: 0.8rem;
+    
+    .bs-tooltip-auto[data-popper-placement^=right] .tooltip-arrow::before, 
+    .bs-tooltip-end .tooltip-arrow::before {
+        border-right-color: #dee2e6 !important;
+    }
+    
+    .bs-tooltip-auto[data-popper-placement^=left] .tooltip-arrow::before, 
+    .bs-tooltip-start .tooltip-arrow::before {
+        border-left-color: #dee2e6 !important;
+    }
+    
+    .bs-tooltip-auto[data-popper-placement^=top] .tooltip-arrow::before, 
+    .bs-tooltip-top .tooltip-arrow::before {
+        border-top-color: #dee2e6 !important;
+    }
+    
+    .bs-tooltip-auto[data-popper-placement^=bottom] .tooltip-arrow::before, 
+    .bs-tooltip-bottom .tooltip-arrow::before {
+        border-bottom-color: #dee2e6 !important;
+    }
+    
+    /* Product tooltip content styling */
+    .product-tooltip .product-item {
+        margin-bottom: 10px;
+        padding-bottom: 5px;
+    }
+    
+    .product-tooltip .product-item:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+    
+    .product-tooltip strong {
         display: block;
-        white-space: nowrap;
+        margin-bottom: 3px;
+        color: #0d6efd;
+    }
+    
+    .product-tooltip .badge {
+        display: inline-block;
+        margin-top: 5px;
+    }
+    
+    .product-tooltip hr {
+        margin: 8px 0;
+        opacity: 0.2;
+    }
+    
+    /* Action buttons styling */
+    .btn-group-sm > .btn {
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        margin-right: 2px;
+    }
+    
+    /* Truncate long text in table cells */
+    td {
+        max-width: 200px;
         overflow: hidden;
         text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    /* Assignment badge styling */
+    td .badge.bg-primary {
+        background-color: #0d6efd !important;
+    }
+    
+    td .badge.bg-secondary {
+        background-color: #6c757d !important;
     }
 </style>
 
@@ -1604,6 +1652,9 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
             $('#quickAssignAlert').hide();
             
             $('#quickAssignModal').modal('show');
+            
+            // Log for debugging
+            console.log('Quick assign modal opened for claim:', { claimId, claimNumber, orderId });
             
             // Log for debugging
             console.log('Quick assign modal opened for claim:', { claimId, claimNumber, orderId });
@@ -1686,5 +1737,32 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                 console.log('Claims table sorting updated to show latest claims first');
             }
         }, 100);
+    });
+</script>
+
+<script>
+    $(document).ready(function() {
+        // Initialize tooltips with custom options
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        const tooltipOptions = {
+            trigger: 'click',
+            html: true,
+            placement: 'right',
+            container: 'body',
+            customClass: 'product-tooltip-container'
+        };
+        [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl, tooltipOptions));
+        
+        // Close tooltips when clicking elsewhere
+        $(document).on('click', function(e) {
+            if (!$(e.target).closest('.view-products-btn, .tooltip').length) {
+                $('.tooltip').remove();
+            }
+        });
+        
+        // Prevent multiple tooltips
+        $('.view-products-btn').on('click', function() {
+            $('.tooltip').not($(this).data('bs-tooltip')).remove();
+        });
     });
 </script>

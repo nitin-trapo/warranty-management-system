@@ -25,12 +25,12 @@ try {
             CREATE TABLE `claim_notes` (
                 `id` int(11) NOT NULL AUTO_INCREMENT,
                 `claim_id` int(11) NOT NULL,
-                `user_id` int(11) NOT NULL,
+                `created_by` int(11) NOT NULL,
                 `note` text NOT NULL,
                 `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                 PRIMARY KEY (`id`),
                 KEY `claim_id` (`claim_id`),
-                KEY `user_id` (`user_id`)
+                KEY `created_by` (`created_by`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ";
         

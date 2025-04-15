@@ -20,66 +20,47 @@ try {
     
     // Set date filters based on time period
     $dateFilter = '';
-    $claimsFilter = '';
     $periodLabel = 'This Year';
     
     switch ($timePeriod) {
         case 'week':
             $dateFilter = "AND YEARWEEK(c.created_at, 1) = YEARWEEK(NOW(), 1)";
-            $claimsFilter = "WHERE YEARWEEK(created_at, 1) = YEARWEEK(NOW(), 1)";
             $periodLabel = 'This Week';
             break;
         case 'month':
             $dateFilter = "AND MONTH(c.created_at) = MONTH(CURRENT_DATE()) AND YEAR(c.created_at) = YEAR(CURRENT_DATE())";
-            $claimsFilter = "WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())";
             $periodLabel = 'This Month';
             break;
         case 'year':
             $dateFilter = "AND YEAR(c.created_at) = YEAR(CURRENT_DATE())";
-            $claimsFilter = "WHERE YEAR(created_at) = YEAR(CURRENT_DATE())";
             $periodLabel = 'This Year';
             break;
         default:
             $dateFilter = "AND YEAR(c.created_at) = YEAR(CURRENT_DATE())";
-            $claimsFilter = "WHERE YEAR(created_at) = YEAR(CURRENT_DATE())";
             $periodLabel = 'This Year';
     }
     
-    // Add CS agent filter if user is a CS agent
-    $csAgentFilter = '';
-    $csAgentClaimsFilter = '';
+    // Track assigned claims for CS agents
+    $assignedClaimsCount = 0;
     if (isCsAgent()) {
         $csAgentId = $_SESSION['user_id'];
-        $csAgentFilter = "AND c.assigned_to = :csAgentId";
-        $csAgentClaimsFilter = "AND assigned_to = :csAgentId";
+        $stmt = $conn->prepare("SELECT COUNT(*) as assigned_count FROM claims WHERE assigned_to = ?");
+        $stmt->execute([$csAgentId]);
+        $assignedClaimsCount = $stmt->fetch()['assigned_count'] ?? 0;
     }
     
     // Total claims (not filtered by time period)
-    if (isCsAgent()) {
-        $stmt = $conn->prepare("SELECT COUNT(*) as total FROM claims WHERE assigned_to = :csAgentId");
-        $stmt->bindParam(':csAgentId', $csAgentId);
-        $stmt->execute();
-    } else {
-        $stmt = $conn->query("SELECT COUNT(*) as total FROM claims");
-    }
+    $stmt = $conn->query("SELECT COUNT(*) as total FROM claims");
     $totalClaims = $stmt->fetch()['total'] ?? 0;
     
     // Claims by status with time period filter
-    $statusQuery = "SELECT status, COUNT(*) as count FROM claims";
-    if (!empty($claimsFilter)) {
-        $statusQuery .= " $claimsFilter";
-    }
-    if (!empty($csAgentClaimsFilter)) {
-        $statusQuery .= " $csAgentClaimsFilter";
+    $statusQuery = "SELECT status, COUNT(*) as count FROM claims WHERE 1=1";
+    if (!empty($dateFilter)) {
+        $dateFilterForStatus = str_replace('c.', '', $dateFilter);
+        $statusQuery .= " " . $dateFilterForStatus;
     }
     $statusQuery .= " GROUP BY status";
-    if (isCsAgent()) {
-        $stmt = $conn->prepare($statusQuery);
-        $stmt->bindParam(':csAgentId', $csAgentId);
-        $stmt->execute();
-    } else {
-        $stmt = $conn->query($statusQuery);
-    }
+    $stmt = $conn->query($statusQuery);
     $claimsByStatus = $stmt->fetchAll();
     
     // Format claims by status for easy access
@@ -95,22 +76,12 @@ try {
         $statusCounts[$status['status']] = $status['count'];
     }
     
-    // Recent claims
-    $stmt = $conn->prepare("SELECT c.*, ci.category_id, cc.name as category_name, cc.sla_days 
-                         FROM claims c 
-                         LEFT JOIN claim_items ci ON c.id = ci.claim_id
-                         LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
-                         WHERE 1=1 $dateFilter $csAgentFilter
-                         GROUP BY c.id
-                         ORDER BY c.created_at DESC LIMIT 5");
-    if (isCsAgent()) {
-        $stmt->bindParam(':csAgentId', $csAgentId);
-    }
-    $stmt->execute();
+    // Recent claims - simplified query to ensure all claims are shown
+    $recentClaimsQuery = "SELECT c.* FROM claims c ORDER BY c.created_at DESC LIMIT 5";
+    $stmt = $conn->query($recentClaimsQuery);
     $recentClaims = $stmt->fetchAll();
     
     // Calculate SLA breaches
-    $currentDate = new DateTime();
     $slaBreachQuery = "SELECT COUNT(DISTINCT c.id) as total FROM claims c 
                       JOIN claim_items ci ON c.id = ci.claim_id
                       JOIN claim_categories cc ON ci.category_id = cc.id 
@@ -120,16 +91,7 @@ try {
     if ($timePeriod != 'all') {
         $slaBreachQuery .= " " . str_replace('AND ', 'AND ', $dateFilter);
     }
-    if (!empty($csAgentClaimsFilter)) {
-        $slaBreachQuery .= " $csAgentClaimsFilter";
-    }
-    if (isCsAgent()) {
-        $stmt = $conn->prepare($slaBreachQuery);
-        $stmt->bindParam(':csAgentId', $csAgentId);
-        $stmt->execute();
-    } else {
-        $stmt = $conn->query($slaBreachQuery);
-    }
+    $stmt = $conn->query($slaBreachQuery);
     $slaBreaches = $stmt->fetch()['total'] ?? 0;
     
     // Claims by category
@@ -137,87 +99,61 @@ try {
                          FROM claim_items ci
                          JOIN claim_categories cc ON ci.category_id = cc.id
                          JOIN claims c ON ci.claim_id = c.id
-                         WHERE 1=1 $dateFilter $csAgentFilter
+                         WHERE 1=1 $dateFilter
                          GROUP BY ci.category_id
                          ORDER BY count DESC
                          LIMIT 5");
-    if (isCsAgent()) {
-        $stmt->bindParam(':csAgentId', $csAgentId);
-    }
     $stmt->execute();
     $claimsByCategory = $stmt->fetchAll();
     
-    // Claims by product type (top 5)
+    // Claims by product type
     $stmt = $conn->prepare("SELECT ci.product_type, COUNT(*) as count 
                          FROM claim_items ci
                          JOIN claims c ON ci.claim_id = c.id
-                         WHERE 1=1 $dateFilter $csAgentFilter
+                         WHERE 1=1 $dateFilter
                          GROUP BY ci.product_type
                          ORDER BY count DESC
                          LIMIT 5");
-    if (isCsAgent()) {
-        $stmt->bindParam(':csAgentId', $csAgentId);
-    }
     $stmt->execute();
     $claimsByProductType = $stmt->fetchAll();
     
-    // Claims created today
+    // Claims today
     $todayQuery = "SELECT COUNT(*) as total FROM claims WHERE DATE(created_at) = CURDATE()";
-    if (!empty($csAgentClaimsFilter)) {
-        $todayQuery .= " $csAgentClaimsFilter";
-    }
-    if (isCsAgent()) {
-        $stmt = $conn->prepare($todayQuery);
-        $stmt->bindParam(':csAgentId', $csAgentId);
-        $stmt->execute();
-    } else {
-        $stmt = $conn->query($todayQuery);
-    }
+    $stmt = $conn->query($todayQuery);
     $claimsToday = $stmt->fetch()['total'] ?? 0;
     
     // Claims resolved today
     $resolvedTodayQuery = "SELECT COUNT(*) as total FROM claims 
                           WHERE DATE(updated_at) = CURDATE() 
                           AND status IN ('approved', 'rejected')";
-    if (!empty($csAgentClaimsFilter)) {
-        $resolvedTodayQuery .= " $csAgentClaimsFilter";
-    }
-    if (isCsAgent()) {
-        $stmt = $conn->prepare($resolvedTodayQuery);
-        $stmt->bindParam(':csAgentId', $csAgentId);
-        $stmt->execute();
-    } else {
-        $stmt = $conn->query($resolvedTodayQuery);
-    }
+    $stmt = $conn->query($resolvedTodayQuery);
     $resolvedToday = $stmt->fetch()['total'] ?? 0;
     
     // Claims by month (for chart)
-    $claimsByMonthQuery = "
-        SELECT 
+    $claimsByMonthQuery = "SELECT 
             MONTH(created_at) as month, 
             COUNT(*) as total 
         FROM claims 
-        WHERE YEAR(created_at) = YEAR(CURRENT_DATE())";
-    
-    if (!empty($csAgentClaimsFilter)) {
-        $claimsByMonthQuery .= " $csAgentClaimsFilter";
-    }
-    
-    $claimsByMonthQuery .= " GROUP BY MONTH(created_at) ORDER BY MONTH(created_at)";
-    
-    if (isCsAgent()) {
-        $stmt = $conn->prepare($claimsByMonthQuery);
-        $stmt->bindParam(':csAgentId', $csAgentId);
-        $stmt->execute();
-    } else {
-        $stmt = $conn->query($claimsByMonthQuery);
-    }
+        WHERE YEAR(created_at) = YEAR(CURRENT_DATE())
+        GROUP BY MONTH(created_at) 
+        ORDER BY MONTH(created_at)";
+    $stmt = $conn->query($claimsByMonthQuery);
     
     $claimsByMonth = [];
     $months = [
         1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr', 5 => 'May', 6 => 'Jun',
         7 => 'Jul', 8 => 'Aug', 9 => 'Sep', 10 => 'Oct', 11 => 'Nov', 12 => 'Dec'
     ];
+    
+    // Initialize all months with 0
+    foreach ($months as $monthNum => $monthName) {
+        $claimsByMonth[$monthNum] = 0;
+    }
+    
+    // Fill in actual data
+    while ($row = $stmt->fetch()) {
+        $claimsByMonth[$row['month']] = (int)$row['total'];
+    }
     
 } catch (PDOException $e) {
     // Log error
@@ -238,22 +174,15 @@ try {
     $claimsByProductType = [];
     $claimsToday = 0;
     $resolvedToday = 0;
+    $claimsByMonth = [];
+    foreach ([1,2,3,4,5,6,7,8,9,10,11,12] as $m) {
+        $claimsByMonth[$m] = 0;
+    }
+    $assignedClaimsCount = 0;
 }
 ?>
 
-<div class="page-title">
-    <h1>Dashboard</h1>
-    <div>
-        <span class="me-3">
-            <i class="fas fa-calendar-alt me-1"></i> <?php echo date('d M, Y'); ?>
-        </span>
-        <span id="current-time">
-            <i class="fas fa-clock me-1"></i> <span id="time-display"></span>
-        </span>
-    </div>
-</div>
-
-<!-- Dashboard Overview -->
+<!-- Dashboard Stats -->
 <div class="row">
     <div class="col-xl-3 col-md-6 mb-3">
         <div class="card stat-card bg-primary text-white h-100">
@@ -264,7 +193,7 @@ try {
                         <div class="stat-value h4 mb-0"><?php echo number_format($totalClaims); ?></div>
                     </div>
                     <div class="stat-icon">
-                        <i class="fas fa-clipboard-list"></i>
+                        <i class="fas fa-file-alt"></i>
                     </div>
                 </div>
             </div>
@@ -276,8 +205,8 @@ try {
             <div class="card-body p-2">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <div class="stat-title small">Approved Claims</div>
-                        <div class="stat-value h4 mb-0"><?php echo number_format($statusCounts['approved']); ?></div>
+                        <div class="stat-title small">Resolved Today</div>
+                        <div class="stat-value h4 mb-0"><?php echo number_format($resolvedToday); ?></div>
                     </div>
                     <div class="stat-icon">
                         <i class="fas fa-check-circle"></i>
@@ -292,11 +221,11 @@ try {
             <div class="card-body p-2">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <div class="stat-title small">Pending Claims</div>
-                        <div class="stat-value h4 mb-0"><?php echo number_format($statusCounts['new'] + $statusCounts['in_progress'] + $statusCounts['on_hold']); ?></div>
+                        <div class="stat-title small">New Today</div>
+                        <div class="stat-value h4 mb-0"><?php echo number_format($claimsToday); ?></div>
                     </div>
                     <div class="stat-icon">
-                        <i class="fas fa-clock"></i>
+                        <i class="fas fa-calendar-day"></i>
                     </div>
                 </div>
             </div>
@@ -318,6 +247,24 @@ try {
             </div>
         </div>
     </div>
+    
+    <?php if (isCsAgent()): ?>
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="card stat-card bg-primary text-white h-100">
+            <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-title small">Assigned to You</div>
+                        <div class="stat-value h4 mb-0"><?php echo number_format($assignedClaimsCount); ?></div>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <!-- Claims Status Chart & Quick Actions -->
@@ -351,7 +298,7 @@ try {
                                     <span>New</span>
                                     <span class="fw-bold"><?php echo $statusCounts['new']; ?></span>
                                 </div>
-                                <div class="progress" style="height: 5px;">
+                                <div class="progress" style="height: 6px;">
                                     <div class="progress-bar bg-info" style="width: <?php echo $totalClaims > 0 ? ($statusCounts['new'] / $totalClaims * 100) : 0; ?>%"></div>
                                 </div>
                             </div>
@@ -361,7 +308,7 @@ try {
                                     <span>In Progress</span>
                                     <span class="fw-bold"><?php echo $statusCounts['in_progress']; ?></span>
                                 </div>
-                                <div class="progress" style="height: 5px;">
+                                <div class="progress" style="height: 6px;">
                                     <div class="progress-bar bg-primary" style="width: <?php echo $totalClaims > 0 ? ($statusCounts['in_progress'] / $totalClaims * 100) : 0; ?>%"></div>
                                 </div>
                             </div>
@@ -371,7 +318,7 @@ try {
                                     <span>On Hold</span>
                                     <span class="fw-bold"><?php echo $statusCounts['on_hold']; ?></span>
                                 </div>
-                                <div class="progress" style="height: 5px;">
+                                <div class="progress" style="height: 6px;">
                                     <div class="progress-bar bg-warning" style="width: <?php echo $totalClaims > 0 ? ($statusCounts['on_hold'] / $totalClaims * 100) : 0; ?>%"></div>
                                 </div>
                             </div>
@@ -381,7 +328,7 @@ try {
                                     <span>Approved</span>
                                     <span class="fw-bold"><?php echo $statusCounts['approved']; ?></span>
                                 </div>
-                                <div class="progress" style="height: 5px;">
+                                <div class="progress" style="height: 6px;">
                                     <div class="progress-bar bg-success" style="width: <?php echo $totalClaims > 0 ? ($statusCounts['approved'] / $totalClaims * 100) : 0; ?>%"></div>
                                 </div>
                             </div>
@@ -391,7 +338,7 @@ try {
                                     <span>Rejected</span>
                                     <span class="fw-bold"><?php echo $statusCounts['rejected']; ?></span>
                                 </div>
-                                <div class="progress" style="height: 5px;">
+                                <div class="progress" style="height: 6px;">
                                     <div class="progress-bar bg-danger" style="width: <?php echo $totalClaims > 0 ? ($statusCounts['rejected'] / $totalClaims * 100) : 0; ?>%"></div>
                                 </div>
                             </div>
@@ -408,19 +355,33 @@ try {
                 <h6 class="mb-0">Quick Actions</h6>
             </div>
             <div class="card-body p-2">
-                <div class="d-grid gap-2">
-                    <a href="claims.php?action=new" class="btn btn-sm btn-primary">
-                        <i class="fas fa-plus-circle me-1"></i> Create New Claim
+                <div class="list-group">
+                    <a href="claims.php" class="list-group-item list-group-item-action py-2 px-3">
+                        <i class="fas fa-list me-2"></i> View All Claims
                     </a>
-                    <a href="users.php?action=new" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-user-plus me-1"></i> Add New User
+                    <a href="claims.php?status=new" class="list-group-item list-group-item-action py-2 px-3">
+                        <i class="fas fa-file-alt me-2"></i> View New Claims
+                        <?php if ($statusCounts['new'] > 0): ?>
+                            <span class="badge bg-info float-end"><?php echo $statusCounts['new']; ?></span>
+                        <?php endif; ?>
                     </a>
-                    <a href="categories.php" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-tags me-1"></i> Manage Categories
+                    <a href="claims.php?status=in_progress" class="list-group-item list-group-item-action py-2 px-3">
+                        <i class="fas fa-spinner me-2"></i> View In Progress Claims
+                        <?php if ($statusCounts['in_progress'] > 0): ?>
+                            <span class="badge bg-primary float-end"><?php echo $statusCounts['in_progress']; ?></span>
+                        <?php endif; ?>
                     </a>
-                    <a href="reports.php" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-file-export me-1"></i> Generate Reports
+                    <a href="claims.php?status=on_hold" class="list-group-item list-group-item-action py-2 px-3">
+                        <i class="fas fa-pause-circle me-2"></i> View On Hold Claims
+                        <?php if ($statusCounts['on_hold'] > 0): ?>
+                            <span class="badge bg-warning float-end"><?php echo $statusCounts['on_hold']; ?></span>
+                        <?php endif; ?>
                     </a>
+                    <?php if (isAdmin()): ?>
+                    <a href="users.php" class="list-group-item list-group-item-action py-2 px-3">
+                        <i class="fas fa-users me-2"></i> Manage Users
+                    </a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -430,59 +391,90 @@ try {
 <!-- Recent Claims -->
 <div class="row">
     <div class="col-lg-12 mb-3">
-        <div class="card h-100">
+        <div class="card">
             <div class="card-header py-2 d-flex justify-content-between align-items-center">
                 <h6 class="mb-0">Recent Claims</h6>
-                <a href="claims.php" class="btn btn-sm btn-primary py-0 px-2">View All</a>
+                <a href="claims.php" class="btn btn-sm btn-outline-primary py-0 px-2">View All</a>
             </div>
             <div class="card-body p-2">
-                <?php if (count($recentClaims) > 0): ?>
+                <?php if (!empty($recentClaims)): ?>
                     <div class="table-responsive">
-                        <table class="table table-sm table-hover">
+                        <table class="table table-sm table-hover mb-0">
                             <thead>
                                 <tr>
-                                    <th>ID</th>
+                                    <th>Claim #</th>
+                                    <th>Order ID</th>
+                                    <th>Products</th>
                                     <th>Category</th>
                                     <th>Status</th>
                                     <th>Created At</th>
+                                    <th>Assignee</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php foreach ($recentClaims as $claim): ?>
                                     <tr>
-                                        <td><?php echo $claim['id']; ?></td>
-                                        <td><?php echo htmlspecialchars($claim['category_name']); ?></td>
                                         <td>
-                                            <?php
-                                            $statusBadge = '';
-                                            switch ($claim['status']) {
-                                                case 'new':
-                                                    $statusBadge = 'info';
-                                                    break;
-                                                case 'in_progress':
-                                                    $statusBadge = 'primary';
-                                                    break;
-                                                case 'on_hold':
-                                                    $statusBadge = 'warning';
-                                                    break;
-                                                case 'approved':
-                                                    $statusBadge = 'success';
-                                                    break;
-                                                case 'rejected':
-                                                    $statusBadge = 'danger';
-                                                    break;
-                                                default:
-                                                    $statusBadge = 'secondary';
-                                            }
+                                            <?php if (!empty($claim['claim_number'])): ?>
+                                                <span class="badge bg-info"><?php echo htmlspecialchars($claim['claim_number']); ?></span>
+                                            <?php else: ?>
+                                                <span class="badge bg-secondary">No Number</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($claim['order_id']); ?></td>
+                                        <td>
+                                            <?php 
+                                            // Get product count for this claim
+                                            $productStmt = $conn->prepare("SELECT COUNT(*) as count FROM claim_items WHERE claim_id = ?");
+                                            $productStmt->execute([$claim['id']]);
+                                            $productCount = $productStmt->fetch()['count'];
+                                            echo "<span class='badge bg-primary'>$productCount</span>";
                                             ?>
-                                            <span class="badge bg-<?php echo $statusBadge; ?>">
+                                        </td>
+                                        <td>
+                                            <?php 
+                                            // Get category for this claim
+                                            $catStmt = $conn->prepare("SELECT cc.name 
+                                                                      FROM claim_items ci 
+                                                                      JOIN claim_categories cc ON ci.category_id = cc.id 
+                                                                      WHERE ci.claim_id = ? 
+                                                                      LIMIT 1");
+                                            $catStmt->execute([$claim['id']]);
+                                            $category = $catStmt->fetch();
+                                            echo htmlspecialchars($category['name'] ?? 'N/A'); 
+                                            ?>
+                                        </td>
+                                        <td>
+                                            <span class="badge <?php 
+                                                switch($claim['status']) {
+                                                    case 'new': echo 'bg-info'; break;
+                                                    case 'in_progress': echo 'bg-primary'; break;
+                                                    case 'on_hold': echo 'bg-warning'; break;
+                                                    case 'approved': echo 'bg-success'; break;
+                                                    case 'rejected': echo 'bg-danger'; break;
+                                                    default: echo 'bg-secondary';
+                                                }
+                                            ?>">
                                                 <?php echo ucfirst(str_replace('_', ' ', $claim['status'])); ?>
                                             </span>
                                         </td>
                                         <td><?php echo date('d M Y', strtotime($claim['created_at'])); ?></td>
                                         <td>
-                                            <a href="claims.php?action=view&id=<?php echo $claim['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-1" data-bs-toggle="tooltip" title="View Claim">
+                                            <?php 
+                                            // Get assignee for this claim
+                                            if (!empty($claim['assigned_to'])) {
+                                                $userStmt = $conn->prepare("SELECT username FROM users WHERE id = ?");
+                                                $userStmt->execute([$claim['assigned_to']]);
+                                                $user = $userStmt->fetch();
+                                                echo htmlspecialchars($user['username'] ?? 'Unknown');
+                                            } else {
+                                                echo 'Unassigned';
+                                            }
+                                            ?>
+                                        </td>
+                                        <td>
+                                            <a href="view_claim.php?id=<?php echo $claim['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-1" data-bs-toggle="tooltip" title="View Claim">
                                                 <i class="fas fa-eye"></i>
                                             </a>
                                         </td>
@@ -496,106 +488,6 @@ try {
                         <i class="fas fa-info-circle me-1"></i> No claims found in the system.
                     </div>
                 <?php endif; ?>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Claims by Category -->
-<div class="row">
-    <div class="col-lg-6 mb-3">
-        <div class="card h-100">
-            <div class="card-header py-2">
-                <h6 class="mb-0">Claims by Category (Top 5)</h6>
-            </div>
-            <div class="card-body p-2">
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover">
-                        <thead>
-                            <tr>
-                                <th>Category</th>
-                                <th>Claims</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($claimsByCategory as $category): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($category['name']); ?></td>
-                                    <td><?php echo $category['count']; ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-lg-6 mb-3">
-        <div class="card h-100">
-            <div class="card-header py-2">
-                <h6 class="mb-0">Claims by Product Type (Top 5)</h6>
-            </div>
-            <div class="card-body p-2">
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover">
-                        <thead>
-                            <tr>
-                                <th>Product Type</th>
-                                <th>Claims</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($claimsByProductType as $productType): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($productType['product_type']); ?></td>
-                                    <td><?php echo $productType['count']; ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Claims Today & Resolved Today -->
-<div class="row">
-    <div class="col-lg-6 mb-3">
-        <div class="card h-100">
-            <div class="card-header py-2">
-                <h6 class="mb-0">Claims Created Today</h6>
-            </div>
-            <div class="card-body p-2">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <div class="stat-title small">Claims Created Today</div>
-                        <div class="stat-value h4 mb-0"><?php echo number_format($claimsToday); ?></div>
-                    </div>
-                    <div class="stat-icon">
-                        <i class="fas fa-plus-circle"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-lg-6 mb-3">
-        <div class="card h-100">
-            <div class="card-header py-2">
-                <h6 class="mb-0">Claims Resolved Today</h6>
-            </div>
-            <div class="card-body p-2">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <div class="stat-title small">Claims Resolved Today</div>
-                        <div class="stat-value h4 mb-0"><?php echo number_format($resolvedToday); ?></div>
-                    </div>
-                    <div class="stat-icon">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -646,33 +538,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }
-    });
-    
-    // Update the time display
-    function updateTime() {
-        var now = new Date();
-        var hours = now.getHours();
-        var minutes = now.getMinutes();
-        var seconds = now.getSeconds();
-        var ampm = hours >= 12 ? 'PM' : 'AM';
-        
-        hours = hours % 12;
-        hours = hours ? hours : 12;
-        minutes = minutes < 10 ? '0' + minutes : minutes;
-        seconds = seconds < 10 ? '0' + seconds : seconds;
-        
-        var timeString = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
-        document.getElementById('time-display').textContent = timeString;
-    }
-    
-    // Update time immediately and then every second
-    updateTime();
-    setInterval(updateTime, 1000);
-    
-    // Initialize tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
     });
 });
 </script>
