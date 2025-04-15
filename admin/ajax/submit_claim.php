@@ -9,6 +9,7 @@
 // Include required files
 require_once '../../config/config.php';
 require_once '../../includes/auth_helper.php';
+require_once '../../includes/email_helper.php';
 
 // Start session if not already started
 if (session_status() === PHP_SESSION_NONE) {
@@ -284,6 +285,79 @@ try {
     
     // Commit transaction
     $conn->commit();
+    
+    // Send email notification
+    try {
+        error_log("===== Starting email notification process for claim ID: {$claimId} =====");
+        
+        // Get claim details for email
+        $stmt = $conn->prepare("
+            SELECT c.*, CONCAT(u.first_name, ' ', u.last_name) as created_by_name, u.email as created_by_email
+            FROM claims c
+            LEFT JOIN users u ON c.created_by = u.id
+            WHERE c.id = ?
+        ");
+        $stmt->execute([$claimId]);
+        $claimData = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$claimData) {
+            error_log("Failed to retrieve claim data for ID: {$claimId}");
+            throw new Exception("Claim data not found");
+        }
+        
+        error_log("Retrieved claim data: " . json_encode(array_intersect_key($claimData, array_flip(['id', 'order_id', 'claim_number', 'customer_email', 'created_by_name', 'created_by_email']))));
+        
+        // Get claim items with category names
+        $stmt = $conn->prepare("
+            SELECT ci.*, cc.name as category_name
+            FROM claim_items ci
+            LEFT JOIN claim_categories cc ON ci.category_id = cc.id
+            WHERE ci.claim_id = ?
+        ");
+        $stmt->execute([$claimId]);
+        $claimItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (empty($claimItems)) {
+            error_log("No claim items found for claim ID: {$claimId}");
+        } else {
+            error_log("Retrieved " . count($claimItems) . " claim items");
+        }
+        
+        // Get notification recipients from settings
+        $recipients = getClaimNotificationRecipients();
+        error_log("Notification recipients from settings: " . json_encode($recipients));
+        
+        // Check if creator notification is enabled
+        $notifyCreator = isCreatorNotificationEnabled();
+        error_log("Notify creator setting: " . ($notifyCreator ? 'Enabled' : 'Disabled'));
+        
+        // Check if staff creator notification is enabled
+        $notifyStaffCreator = isStaffCreatorNotificationEnabled();
+        error_log("Notify staff creator setting: " . ($notifyStaffCreator ? 'Enabled' : 'Disabled'));
+        
+        // Send email notification
+        $emailSent = sendClaimNotificationEmail($claimData, $claimItems, $recipients, $notifyCreator, $notifyStaffCreator);
+        
+        if ($emailSent) {
+            error_log("Claim notification email sent successfully for claim ID: {$claimId}");
+        } else {
+            error_log("Failed to send claim notification email for claim ID: {$claimId}");
+            
+            // Check email configuration
+            error_log("Email configuration: Host=" . MAIL_HOST . ", Port=" . MAIL_PORT . ", Username=" . MAIL_USERNAME . ", From=" . MAIL_FROM_ADDRESS);
+            
+            // Check if PHPMailer is available
+            if (!class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
+                error_log("PHPMailer class not found. Check if composer dependencies are installed.");
+            }
+        }
+        
+        error_log("===== Email notification process completed =====");
+    } catch (Exception $e) {
+        // Log error but don't affect the claim submission response
+        error_log("Error sending claim notification email: " . $e->getMessage());
+        error_log("Exception trace: " . $e->getTraceAsString());
+    }
     
     // Get category name for the response
     $stmt = $conn->prepare("SELECT name FROM claim_categories WHERE id = ?");

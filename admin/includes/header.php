@@ -109,6 +109,13 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             border-bottom: 1px solid #dee2e6 !important;
         }
         
+        /* Remove all table borders */
+        .table.table-bordered,
+        .table.table-bordered th,
+        .table.table-bordered td {
+            border: none !important;
+        }
+        
         /* Pagination styling */
         .dataTables_paginate .paginate_button {
             border: none !important;

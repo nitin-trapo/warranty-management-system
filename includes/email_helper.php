@@ -16,6 +16,40 @@ require_once __DIR__ . '/../vendor/autoload.php';
 // Include email configuration
 require_once __DIR__ . '/../config/email_config.php';
 
+// Include system settings helper
+require_once __DIR__ . '/system_settings_helper.php';
+
+// Include template helper
+require_once __DIR__ . '/template_helper.php';
+
+// Define email log file path
+define('EMAIL_LOG_FILE', ROOT_PATH . '/logs/email.log');
+
+// Create logs directory if it doesn't exist
+if (!file_exists(ROOT_PATH . '/logs')) {
+    mkdir(ROOT_PATH . '/logs', 0755, true);
+}
+
+// Create email log file if it doesn't exist
+if (!file_exists(EMAIL_LOG_FILE)) {
+    file_put_contents(EMAIL_LOG_FILE, "Email Log File Created: " . date('Y-m-d H:i:s') . "\n");
+    chmod(EMAIL_LOG_FILE, 0644);
+}
+
+/**
+ * Log email-related messages to the email log file
+ * 
+ * @param string $message Message to log
+ * @return void
+ */
+function logEmail($message) {
+    $timestamp = date('Y-m-d H:i:s');
+    $logMessage = "[$timestamp] $message\n";
+    file_put_contents(EMAIL_LOG_FILE, $logMessage, FILE_APPEND);
+    // Also log to PHP error log for backward compatibility
+    error_log($message);
+}
+
 /**
  * Send an email with OTP code
  * 
@@ -50,93 +84,23 @@ function sendOtpEmail($to, $otp, $purpose = 'login') {
         $mail->isHTML(true);
         $mail->Subject = $subject;
         
-        // Email template
-        $message = '
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>'.$subject.'</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                    margin: 0;
-                    padding: 0;
-                }
-                .container {
-                    max-width: 600px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    border: 1px solid #ddd;
-                    border-radius: 5px;
-                }
-                .header {
-                    background-color: #2563eb;
-                    color: #fff;
-                    padding: 20px;
-                    text-align: center;
-                    border-top-left-radius: 5px;
-                    border-top-right-radius: 5px;
-                    margin-bottom: 20px;
-                }
-                .content {
-                    padding: 20px;
-                }
-                .otp-code {
-                    font-size: 32px;
-                    letter-spacing: 5px;
-                    text-align: center;
-                    padding: 15px;
-                    background-color: #f5f5f5;
-                    border-radius: 5px;
-                    margin: 20px 0;
-                    font-weight: bold;
-                }
-                .footer {
-                    margin-top: 30px;
-                    text-align: center;
-                    font-size: 12px;
-                    color: #777;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h2>'.htmlspecialchars($companyName).'</h2>
-                </div>
-                <div class="content">
-                    <p>Hello,</p>';
+        // Set expiry minutes
+        $expiryMinutes = 10;
         
-        if ($purpose == 'login') {
-            $message .= '<p>Your one-time password (OTP) for login is:</p>';
-        } else {
-            $message .= '<p>Your email verification code is:</p>';
-        }
-        
-        $message .= '
-                    <div class="otp-code">'.htmlspecialchars($otp).'</div>
-                    <p>This code will expire in 10 minutes.</p>
-                    <p>If you didn\'t request this code, please ignore this email.</p>
-                    <p>Thank you,<br>'.htmlspecialchars($companyName).' Team</p>
-                </div>
-                <div class="footer">
-                    <p>This is an automated message. Please do not reply to this email.</p>
-                    <p>&copy; '.date('Y').' '.htmlspecialchars($companyName).'. All rights reserved.</p>
-                </div>
-            </div>
-        </body>
-        </html>';
+        // Render email template
+        $message = renderEmailTemplate('otp_email', [
+            'otp' => $otp,
+            'purpose' => $purpose,
+            'companyName' => $companyName,
+            'expiryMinutes' => $expiryMinutes
+        ]);
         
         $mail->Body = $message;
-        $mail->AltBody = "Your OTP code is: $otp. This code will expire in 10 minutes.";
+        $mail->AltBody = "Your OTP code is: $otp. This code will expire in $expiryMinutes minutes.";
         
         return $mail->send();
     } catch (Exception $e) {
-        error_log("Message could not be sent. Mailer Error: {$mail->ErrorInfo}");
+        logEmail("Message could not be sent. Mailer Error: {$mail->ErrorInfo}");
         return false;
     }
 }
@@ -188,7 +152,7 @@ function saveOtp($userId, $otp, $purpose = 'login', $expiryMinutes = 10) {
         
         return $stmt->execute();
     } catch(PDOException $e) {
-        error_log("Error saving OTP: " . $e->getMessage());
+        logEmail("Error saving OTP: " . $e->getMessage());
         return false;
     }
 }
@@ -231,7 +195,326 @@ function verifyOtp($userId, $otp, $purpose = 'login') {
         
         return false;
     } catch(PDOException $e) {
-        error_log("Error verifying OTP: " . $e->getMessage());
+        logEmail("Error verifying OTP: " . $e->getMessage());
         return false;
     }
+}
+
+/**
+ * Send claim notification email
+ * 
+ * @param array $claim Claim data
+ * @param array $claimItems Claim items data
+ * @param array $recipients Array of email addresses to notify
+ * @param bool $notifyCreator Whether to notify the claim creator (customer)
+ * @param bool $notifyStaffCreator Whether to notify the staff member who created the claim
+ * @return bool True if email was sent successfully, false otherwise
+ */
+function sendClaimNotificationEmail($claim, $claimItems, $recipients = [], $notifyCreator = true, $notifyStaffCreator = true) {
+    try {
+        // Debug log
+        logEmail("Starting claim notification email process for claim ID: " . ($claim['id'] ?? 'unknown'));
+        logEmail("Recipients: " . json_encode($recipients));
+        logEmail("Notify creator: " . ($notifyCreator ? 'Yes' : 'No'));
+        logEmail("Notify staff creator: " . ($notifyStaffCreator ? 'Yes' : 'No'));
+        
+        // Get company name from email config
+        $companyName = MAIL_FROM_NAME;
+        
+        // Create a new PHPMailer instance
+        $mail = new PHPMailer(true);
+        
+        // Enable debug output
+        $mail->SMTPDebug = SMTP::DEBUG_SERVER;
+        $mail->Debugoutput = function($str, $level) {
+            logEmail("PHPMailer [$level]: $str");
+        };
+        
+        // Configure mailer with system settings
+        $mail = configureMailer($mail);
+        
+        // Set from address
+        $fromEmail = getSystemSetting('company_email') ?: MAIL_FROM_ADDRESS;
+        $mail->setFrom($fromEmail, $companyName);
+        logEmail("From address: $fromEmail");
+        
+        // Set email subject
+        $subject = "{$companyName} - New Warranty Claim #{$claim['id']} ({$claim['claim_number']})";
+        $mail->Subject = $subject;
+        
+        // Content
+        $mail->isHTML(true);
+        
+        // Build admin URL for the claim
+        $adminUrl = '';
+        $baseUrl = getSystemSetting('site_url');
+        if (!empty($baseUrl)) {
+            $adminUrl = rtrim($baseUrl, '/') . '/admin/view_claim.php?id=' . $claim['id'];
+        }
+        
+        // Common template variables
+        $templateVars = [
+            'claim' => $claim,
+            'claimItems' => $claimItems,
+            'companyName' => $companyName,
+            'adminUrl' => $adminUrl
+        ];
+        
+        $emailsSent = 0;
+        $emailErrors = [];
+        
+        // Send to regular recipients
+        if (!empty($recipients)) {
+            // Reset recipients
+            $mail->clearAddresses();
+            
+            // Add recipients
+            foreach ($recipients as $recipient) {
+                if (filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+                    $mail->addAddress($recipient);
+                    logEmail("Added recipient: $recipient");
+                } else {
+                    logEmail("Invalid recipient email: $recipient");
+                }
+            }
+            
+            if (count($mail->getToAddresses()) === 0) {
+                logEmail("No valid recipients for admin notification");
+            } else {
+                // Generate email content for admin/staff recipients
+                $templateVars['isCustomer'] = false;
+                $templateVars['isStaffCreator'] = false;
+                
+                try {
+                    $message = renderEmailTemplate('claim_notification', $templateVars);
+                    $mail->Body = $message;
+                    
+                    // Generate plain text version
+                    $plainText = generateClaimPlainText($claim, $claimItems, false);
+                    $mail->AltBody = $plainText;
+                    
+                    // Send email
+                    if ($mail->send()) {
+                        logEmail("Admin notification email sent successfully");
+                        $emailsSent++;
+                    } else {
+                        $error = "Admin notification email failed: " . $mail->ErrorInfo;
+                        logEmail($error);
+                        $emailErrors[] = $error;
+                    }
+                } catch (Exception $e) {
+                    $error = "Error rendering admin template: " . $e->getMessage();
+                    logEmail($error);
+                    $emailErrors[] = $error;
+                }
+            }
+        } else {
+            logEmail("No admin recipients configured");
+        }
+        
+        // Send to customer if enabled
+        if ($notifyCreator && !empty($claim['customer_email']) && filter_var($claim['customer_email'], FILTER_VALIDATE_EMAIL)) {
+            // Reset recipients
+            $mail->clearAddresses();
+            $mail->addAddress($claim['customer_email'], $claim['customer_name']);
+            logEmail("Added customer recipient: " . $claim['customer_email']);
+            
+            // Generate email content for customer
+            $templateVars['isCustomer'] = true;
+            $templateVars['isStaffCreator'] = false;
+            
+            try {
+                $message = renderEmailTemplate('claim_notification', $templateVars);
+                $mail->Body = $message;
+                
+                // Generate plain text version
+                $plainText = generateClaimPlainText($claim, $claimItems, true);
+                $mail->AltBody = $plainText;
+                
+                // Send email
+                if ($mail->send()) {
+                    logEmail("Customer notification email sent successfully");
+                    $emailsSent++;
+                } else {
+                    $error = "Customer notification email failed: " . $mail->ErrorInfo;
+                    logEmail($error);
+                    $emailErrors[] = $error;
+                }
+            } catch (Exception $e) {
+                $error = "Error rendering customer template: " . $e->getMessage();
+                logEmail($error);
+                $emailErrors[] = $error;
+            }
+        } else {
+            if (!$notifyCreator) {
+                logEmail("Customer notification disabled");
+            } else if (empty($claim['customer_email'])) {
+                logEmail("No customer email available");
+            } else {
+                logEmail("Invalid customer email: " . $claim['customer_email']);
+            }
+        }
+        
+        // Send to staff creator if enabled
+        if ($notifyStaffCreator && !empty($claim['created_by_email']) && filter_var($claim['created_by_email'], FILTER_VALIDATE_EMAIL)) {
+            // Check if staff email is already in recipients
+            $alreadyNotified = false;
+            foreach ($recipients as $recipient) {
+                if (strtolower($recipient) === strtolower($claim['created_by_email'])) {
+                    $alreadyNotified = true;
+                    logEmail("Staff creator already notified as admin recipient");
+                    break;
+                }
+            }
+            
+            if (!$alreadyNotified) {
+                // Reset recipients
+                $mail->clearAddresses();
+                $mail->addAddress($claim['created_by_email'], $claim['created_by_name'] ?? '');
+                logEmail("Added staff creator recipient: " . $claim['created_by_email']);
+                
+                // Generate email content for staff creator
+                $templateVars['isCustomer'] = false;
+                $templateVars['isStaffCreator'] = true;
+                
+                try {
+                    $message = renderEmailTemplate('claim_notification', $templateVars);
+                    $mail->Body = $message;
+                    
+                    // Generate plain text version
+                    $plainText = generateClaimPlainText($claim, $claimItems, false, true);
+                    $mail->AltBody = $plainText;
+                    
+                    // Send email
+                    if ($mail->send()) {
+                        logEmail("Staff creator notification email sent successfully");
+                        $emailsSent++;
+                    } else {
+                        $error = "Staff creator notification email failed: " . $mail->ErrorInfo;
+                        logEmail($error);
+                        $emailErrors[] = $error;
+                    }
+                } catch (Exception $e) {
+                    $error = "Error rendering staff creator template: " . $e->getMessage();
+                    logEmail($error);
+                    $emailErrors[] = $error;
+                }
+            }
+        } else {
+            if (!$notifyStaffCreator) {
+                logEmail("Staff creator notification disabled");
+            } else if (empty($claim['created_by_email'])) {
+                logEmail("No staff creator email available");
+            } else {
+                logEmail("Invalid staff creator email: " . $claim['created_by_email']);
+            }
+        }
+        
+        // Log summary
+        logEmail("Email sending complete. Emails sent: $emailsSent, Errors: " . count($emailErrors));
+        if (!empty($emailErrors)) {
+            logEmail("Email errors: " . json_encode($emailErrors));
+        }
+        
+        return $emailsSent > 0;
+    } catch (Exception $e) {
+        logEmail("Failed to send claim notification email: {$e->getMessage()}");
+        logEmail("Exception trace: " . $e->getTraceAsString());
+        return false;
+    }
+}
+
+/**
+ * Generate plain text version of claim notification
+ * 
+ * @param array $claim Claim data
+ * @param array $claimItems Claim items data
+ * @param bool $isCustomer Whether the recipient is the customer
+ * @param bool $isStaffCreator Whether the recipient is the staff creator
+ * @return string Plain text email content
+ */
+function generateClaimPlainText($claim, $claimItems, $isCustomer = false, $isStaffCreator = false) {
+    $text = '';
+    
+    if ($isCustomer) {
+        $text .= "Your Warranty Claim Has Been Submitted\n\n";
+        $text .= "Thank you for submitting your warranty claim. We have received your request and will begin processing it shortly.\n\n";
+    } elseif ($isStaffCreator) {
+        $text .= "Warranty Claim Created Successfully\n\n";
+        $text .= "You have successfully created a new warranty claim with the following details:\n\n";
+    } else {
+        $text .= "New Warranty Claim Submitted\n\n";
+        $text .= "A new warranty claim has been submitted with the following details:\n\n";
+    }
+    
+    $text .= "Claim Number: {$claim['claim_number']}\n";
+    $text .= "Order ID: {$claim['order_id']}\n";
+    $text .= "Customer: {$claim['customer_name']} ({$claim['customer_email']})\n";
+    if (!empty($claim['customer_phone'])) {
+        $text .= "Phone: {$claim['customer_phone']}\n";
+    }
+    $text .= "Delivery Date: {$claim['delivery_date']}\n";
+    $text .= "Status: " . ucfirst(str_replace('_', ' ', $claim['status'])) . "\n";
+    $text .= "Submission Date: {$claim['created_at']}\n";
+    
+    if (!$isCustomer && !empty($claim['created_by_name'])) {
+        $text .= "Created By: {$claim['created_by_name']}\n";
+    }
+    
+    $text .= "\nClaim Items:\n";
+    foreach ($claimItems as $item) {
+        $text .= "- SKU: {$item['sku']}, Product: {$item['product_name']}, Category: {$item['category_name']}\n";
+        $text .= "  Description: {$item['description']}\n\n";
+    }
+    
+    if ($isCustomer) {
+        $text .= "We will review your claim and get back to you as soon as possible. ";
+        $text .= "Your claim reference number is {$claim['claim_number']}. Please keep this for your records.\n\n";
+        $text .= "If you have any questions about your claim, please contact our customer service team.\n\n";
+    } else {
+        $text .= "You can view and manage this claim in the Warranty Management System.\n\n";
+    }
+    
+    return $text;
+}
+
+/**
+ * Get notification recipients from settings
+ * 
+ * @return array Array of email addresses
+ */
+function getClaimNotificationRecipients() {
+    // Get from system settings
+    $recipientsStr = getSystemSetting('claim_notification_emails');
+    
+    if (empty($recipientsStr)) {
+        // Default to the system email if no recipients are configured
+        return [MAIL_FROM_ADDRESS];
+    }
+    
+    // Split by comma and trim whitespace
+    $recipients = array_map('trim', explode(',', $recipientsStr));
+    
+    // Filter out invalid email addresses
+    return array_filter($recipients, function($email) {
+        return filter_var($email, FILTER_VALIDATE_EMAIL);
+    });
+}
+
+/**
+ * Check if creator notification is enabled
+ * 
+ * @return bool True if enabled, false otherwise
+ */
+function isCreatorNotificationEnabled() {
+    return getSystemSetting('notify_claim_creator') === '1';
+}
+
+/**
+ * Check if staff creator notification is enabled
+ * 
+ * @return bool True if enabled, false otherwise
+ */
+function isStaffCreatorNotificationEnabled() {
+    return getSystemSetting('notify_staff_creator') === '1';
 }
