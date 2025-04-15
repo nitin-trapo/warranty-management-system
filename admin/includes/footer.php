@@ -31,24 +31,23 @@
             $.ajax({
                 url: 'ajax/mark_notification_read.php',
                 type: 'POST',
+                dataType: 'json',
                 data: {
                     notification_id: notificationId
                 },
-                success: function(response) {
-                    try {
-                        const result = JSON.parse(response);
-                        if (result.success) {
-                            // Update notification count
-                            updateNotificationCount();
-                            
-                            // If element is provided, redirect to the link
-                            if (element && element.href && element.href !== 'javascript:void(0);') {
-                                window.location.href = element.href;
-                            }
+                success: function(result) {
+                    if (result.success) {
+                        // Update notification count
+                        updateNotificationCount();
+                        
+                        // If element is provided, redirect to the link
+                        if (element && element.href && element.href !== 'javascript:void(0);') {
+                            window.location.href = element.href;
                         }
-                    } catch (e) {
-                        console.error('Error parsing response:', e);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error marking notification as read:', error);
                 }
             });
         }
@@ -59,21 +58,20 @@
             $.ajax({
                 url: 'ajax/mark_all_notifications_read.php',
                 type: 'POST',
-                success: function(response) {
-                    try {
-                        const result = JSON.parse(response);
-                        if (result.success) {
-                            // Update notification count
-                            updateNotificationCount();
-                            
-                            // Hide all notifications in dropdown
-                            $('.notification-item').remove();
-                            $('.notification-dropdown').append('<div class="notification-empty"><p>No new notifications</p></div>');
-                            $('.mark-all-read').hide();
-                        }
-                    } catch (e) {
-                        console.error('Error parsing response:', e);
+                dataType: 'json',
+                success: function(result) {
+                    if (result.success) {
+                        // Update notification count
+                        updateNotificationCount();
+                        
+                        // Hide all notifications in dropdown
+                        $('.notification-item').remove();
+                        $('.notification-dropdown').append('<div class="notification-empty"><p>No new notifications</p></div>');
+                        $('.mark-all-read').hide();
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error marking all notifications as read:', error);
                 }
             });
         }

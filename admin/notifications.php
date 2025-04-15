@@ -41,6 +41,64 @@ if (isset($_GET['mark_read']) && is_numeric($_GET['mark_read'])) {
 try {
     $conn = getDbConnection();
     
+    // Check if notifications table exists
+    $tableExists = false;
+    $stmt = $conn->query("SHOW TABLES LIKE 'notifications'");
+    if ($stmt->rowCount() > 0) {
+        $tableExists = true;
+    }
+    
+    // Create notifications table if it doesn't exist
+    if (!$tableExists) {
+        $createTableSQL = "
+            CREATE TABLE `notifications` (
+                `id` int(11) NOT NULL AUTO_INCREMENT,
+                `type` enum('info','success','warning','danger') NOT NULL DEFAULT 'info',
+                `message` text NOT NULL,
+                `user_id` int(11) NOT NULL DEFAULT 0,
+                `link` varchar(255) DEFAULT NULL,
+                `is_read` tinyint(1) NOT NULL DEFAULT 0,
+                `read_at` datetime DEFAULT NULL,
+                `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (`id`),
+                KEY `user_id` (`user_id`),
+                KEY `is_read` (`is_read`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ";
+        
+        $conn->exec($createTableSQL);
+        
+        // Add some sample notifications for testing
+        $sampleNotifications = [
+            [
+                'type' => 'info',
+                'message' => 'Welcome to the Warranty Management System',
+                'user_id' => $_SESSION['user_id'],
+                'link' => 'dashboard.php'
+            ],
+            [
+                'type' => 'success',
+                'message' => 'Your account has been set up successfully',
+                'user_id' => $_SESSION['user_id'],
+                'link' => 'profile.php'
+            ]
+        ];
+        
+        $insertStmt = $conn->prepare("
+            INSERT INTO notifications (type, message, user_id, link, created_at)
+            VALUES (:type, :message, :user_id, :link, NOW())
+        ");
+        
+        foreach ($sampleNotifications as $notification) {
+            $insertStmt->bindParam(':type', $notification['type']);
+            $insertStmt->bindParam(':message', $notification['message']);
+            $insertStmt->bindParam(':user_id', $notification['user_id']);
+            $insertStmt->bindParam(':link', $notification['link']);
+            $insertStmt->execute();
+        }
+    }
+    
+    // Get notifications
     $stmt = $conn->prepare("
         SELECT * FROM notifications 
         WHERE (user_id = :user_id OR user_id = 0)
@@ -51,6 +109,7 @@ try {
     $stmt->execute();
     
     $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
 } catch (PDOException $e) {
     $notifications = [];
     $errorMessage = "Error retrieving notifications: " . $e->getMessage();
