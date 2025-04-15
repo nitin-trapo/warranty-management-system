@@ -18,6 +18,28 @@ require_once '../includes/template_helper.php';
 // Enforce admin-only access
 enforceAdminOnly();
 
+// Create backup directory if it doesn't exist
+$backupDir = '../database/backups';
+if (!file_exists($backupDir)) {
+    mkdir($backupDir, 0755, true);
+}
+
+/**
+ * Format file size in human-readable format
+ * 
+ * @param int $bytes File size in bytes
+ * @return string Formatted file size
+ */
+function formatFileSize($bytes) {
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $bytes = max($bytes, 0);
+    $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+    $pow = min($pow, count($units) - 1);
+    $bytes /= (1 << (10 * $pow));
+    
+    return round($bytes, 2) . ' ' . $units[$pow];
+}
+
 // Include header
 require_once 'includes/header.php';
 
@@ -36,8 +58,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $conn = getDbConnection();
         
-        // Begin transaction
-        $conn->beginTransaction();
+        // Begin transaction only for operations that need it
+        $needsTransaction = isset($_POST['email_settings']) || 
+                            isset($_POST['email_config']) || 
+                            isset($_POST['template_settings']);
+        
+        if ($needsTransaction) {
+            $conn->beginTransaction();
+        }
         
         // Email notification settings
         if (isset($_POST['email_settings'])) {
@@ -105,82 +133,159 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $smtpPassword = getSystemSetting('smtp_password') ?: MAIL_PASSWORD;
                 }
                 
-                // Update email_config.php file
-                $configFile = ROOT_PATH . '/config/email_config.php';
-                if (file_exists($configFile)) {
-                    try {
-                        // Create a backup of the original file
-                        $backupFile = $configFile . '.bak';
-                        copy($configFile, $backupFile);
-                        
-                        // Read the current file
-                        $configContent = file_get_contents($configFile);
-                        
-                        // Create new content with updated constants
-                        $newConfigContent = "<?php
-/**
- * Email Configuration
- * 
- * This file contains the email configuration settings for the Warranty Management System.
- */
-
-// Include PHPMailer classes
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\SMTP;
-use PHPMailer\PHPMailer\Exception;
-
-// Default email settings
-define('MAIL_MAILER', 'smtp');
-define('MAIL_HOST', '$smtpHost');
-define('MAIL_PORT', $smtpPort);
-define('MAIL_USERNAME', '$smtpUsername');
-define('MAIL_PASSWORD', '$smtpPassword');
-define('MAIL_ENCRYPTION', '$smtpEncryption');
-define('MAIL_FROM_ADDRESS', '$fromEmail');
-define('MAIL_FROM_NAME', '$fromName');
-
-// Email templates directory
-define('EMAIL_TEMPLATES_DIR', ROOT_PATH . '/templates/emails');
-
-";
-                        
-                        // Extract the functions from the original file
-                        $functionMatches = [];
-                        preg_match_all('/\/\*\*\s*\n.*?function\s+\w+\s*\(.*?\)\s*{.*?}\n/s', $configContent, $functionMatches);
-                        
-                        // Append the functions to the new content
-                        if (!empty($functionMatches[0])) {
-                            $newConfigContent .= implode("\n", $functionMatches[0]);
-                        } else {
-                            // If function extraction fails, append everything after the constants
-                            $startPos = strpos($configContent, "define('EMAIL_TEMPLATES_DIR");
-                            if ($startPos !== false) {
-                                $startPos = strpos($configContent, "\n", $startPos) + 1;
-                                $newConfigContent .= substr($configContent, $startPos);
-                            }
-                        }
-                        
-                        // Write the updated content back to the file
-                        if (file_put_contents($configFile, $newConfigContent)) {
-                            $successMessage = 'Email configuration settings saved successfully in both database and config file.';
-                            
-                            // Log the update
-                            logEmail("Email configuration updated by admin. Host: $smtpHost, Username: $smtpUsername");
-                        } else {
-                            $successMessage = 'Email configuration settings saved in database, but failed to update config file. Please check file permissions.';
-                            
-                            // Restore the backup
-                            copy($backupFile, $configFile);
-                        }
-                    } catch (Exception $e) {
-                        $successMessage = 'Email configuration settings saved in database, but failed to update config file: ' . $e->getMessage();
-                    }
-                } else {
-                    $successMessage = 'Email configuration settings saved in database, but config file not found.';
-                }
+                // Set success message
+                $successMessage = 'Email configuration settings saved successfully.';
             }
             
             $activeTab = 'email_config';
+        }
+        
+        // Database backup
+        if (isset($_POST['create_backup'])) {
+            try {
+                // Create backup file name with timestamp
+                $timestamp = date('Y-m-d_H-i-s');
+                $backupFileName = "warranty_system_backup_{$timestamp}.sql";
+                $backupFilePath = $backupDir . '/' . $backupFileName;
+                
+                // Get database connection
+                $conn = getDbConnection();
+                
+                // Get all tables
+                $tables = [];
+                $result = $conn->query("SHOW TABLES");
+                while ($row = $result->fetch(PDO::FETCH_NUM)) {
+                    $tables[] = $row[0];
+                }
+                
+                // Start output buffering
+                ob_start();
+                
+                // Add SQL header
+                echo "-- Warranty Management System Database Backup\n";
+                echo "-- Generated: " . date('Y-m-d H:i:s') . "\n";
+                echo "-- Host: " . DB_HOST . "\n";
+                echo "-- Database: " . DB_NAME . "\n\n";
+                
+                echo "SET FOREIGN_KEY_CHECKS=0;\n";
+                echo "SET SQL_MODE = \"NO_AUTO_VALUE_ON_ZERO\";\n";
+                echo "SET AUTOCOMMIT = 0;\n";
+                echo "START TRANSACTION;\n";
+                echo "SET time_zone = \"+00:00\";\n\n";
+                
+                // Process each table
+                foreach ($tables as $table) {
+                    // Get create table statement
+                    $stmt = $conn->query("SHOW CREATE TABLE `$table`");
+                    $row = $stmt->fetch(PDO::FETCH_NUM);
+                    
+                    echo "\n\n-- Table structure for table `$table`\n\n";
+                    echo "DROP TABLE IF EXISTS `$table`;\n";
+                    echo $row[1] . ";\n\n";
+                    
+                    // Get table data
+                    $result = $conn->query("SELECT * FROM `$table`");
+                    $numFields = $result->columnCount();
+                    $numRows = $result->rowCount();
+                    
+                    if ($numRows > 0) {
+                        echo "-- Dumping data for table `$table`\n";
+                        
+                        // Process rows in batches to avoid large INSERT statements
+                        $rowCounter = 0;
+                        $batchSize = 100;
+                        
+                        while ($row = $result->fetch(PDO::FETCH_NUM)) {
+                            if ($rowCounter % $batchSize == 0) {
+                                if ($rowCounter > 0) {
+                                    echo ";\n";
+                                }
+                                echo "INSERT INTO `$table` VALUES\n";
+                            } else {
+                                echo ",\n";
+                            }
+                            
+                            echo "(";
+                            
+                            for ($i = 0; $i < $numFields; $i++) {
+                                if (isset($row[$i])) {
+                                    if (is_numeric($row[$i]) && !preg_match('/^0/', $row[$i])) {
+                                        echo $row[$i];
+                                    } else {
+                                        echo "'" . addslashes($row[$i]) . "'";
+                                    }
+                                } else {
+                                    echo "NULL";
+                                }
+                                
+                                if ($i < ($numFields - 1)) {
+                                    echo ",";
+                                }
+                            }
+                            
+                            echo ")";
+                            
+                            $rowCounter++;
+                            
+                            if ($rowCounter % $batchSize == 0 || $rowCounter == $numRows) {
+                                echo ";\n";
+                            }
+                        }
+                        
+                        // Ensure we end with a semicolon
+                        if ($rowCounter > 0 && $rowCounter % $batchSize != 0) {
+                            echo ";\n";
+                        }
+                    }
+                }
+                
+                echo "\nSET FOREIGN_KEY_CHECKS=1;\n";
+                echo "COMMIT;\n";
+                
+                // Get output buffer content and end buffering
+                $sqlContent = ob_get_clean();
+                
+                // Write SQL content to file
+                if (file_put_contents($backupFilePath, $sqlContent) !== false) {
+                    // Compress the backup file
+                    $zipFile = $backupFilePath . '.zip';
+                    $zip = new ZipArchive();
+                    if ($zip->open($zipFile, ZipArchive::CREATE) === TRUE) {
+                        $zip->addFile($backupFilePath, $backupFileName);
+                        $zip->close();
+                        
+                        // Remove the uncompressed SQL file
+                        unlink($backupFilePath);
+                        
+                        $successMessage = 'Database backup created successfully.';
+                    } else {
+                        $errorMessage = 'Failed to compress backup file.';
+                    }
+                } else {
+                    $errorMessage = 'Failed to write backup file.';
+                }
+            } catch (Exception $e) {
+                $errorMessage = 'Error creating backup: ' . $e->getMessage();
+            }
+            
+            $activeTab = 'backup';
+        }
+        
+        // Delete backup
+        if (isset($_POST['delete_backup']) && !empty($_POST['backup_file'])) {
+            $backupFile = basename($_POST['backup_file']);
+            $backupFilePath = $backupDir . '/' . $backupFile;
+            
+            // Validate file path to prevent directory traversal
+            if (strpos($backupFile, '..') !== false || strpos($backupFile, '/') !== false || strpos($backupFile, '\\') !== false) {
+                $errorMessage = 'Invalid backup file.';
+            } else if (file_exists($backupFilePath) && unlink($backupFilePath)) {
+                $successMessage = 'Backup file deleted successfully.';
+            } else {
+                $errorMessage = 'Failed to delete backup file.';
+            }
+            
+            $activeTab = 'backup';
         }
         
         // Email template settings
@@ -285,19 +390,18 @@ define('EMAIL_TEMPLATES_DIR', ROOT_PATH . '/templates/emails');
             $activeTab = 'debug';
         }
         
-        // Commit transaction
-        $conn->commit();
-    } catch (PDOException $e) {
-        // Rollback transaction on error
-        if ($conn->inTransaction()) {
+        // Commit transaction if started
+        if ($needsTransaction) {
+            $conn->commit();
+        }
+        
+    } catch (Exception $e) {
+        // Rollback transaction on error if started
+        if (isset($conn) && $needsTransaction) {
             $conn->rollBack();
         }
         
-        // Set error message
-        $errorMessage = 'Error saving settings: ' . $e->getMessage();
-        
-        // Log error
-        error_log("Error saving settings: " . $e->getMessage());
+        $errorMessage = 'Error: ' . $e->getMessage();
     }
 }
 
@@ -355,6 +459,9 @@ $templateContent = $templateType === 'otp' ? $otpTemplate : $claimTemplate;
     </li>
     <li class="nav-item">
         <a class="nav-link <?php echo $activeTab === 'debug' ? 'active' : ''; ?>" href="?tab=debug">Email Debugging</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?php echo $activeTab === 'backup' ? 'active' : ''; ?>" href="?tab=backup">Database Backup</a>
     </li>
 </ul>
 
@@ -522,7 +629,7 @@ $templateContent = $templateType === 'otp' ? $otpTemplate : $claimTemplate;
 </div>
 
 <!-- Email Debugging Tab -->
-<?php else: ?>
+<?php elseif ($activeTab === 'debug'): ?>
 <div class="row">
     <div class="col-md-6">
         <div class="card mb-4">
@@ -675,10 +782,104 @@ $templateContent = $templateType === 'otp' ? $otpTemplate : $claimTemplate;
     </div>
 </div>
 
+<!-- Database Backup Tab -->
+<?php elseif ($activeTab === 'backup'): ?>
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Database Backup</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-4">Create a backup of your database to safeguard your warranty system data. You can download or delete backups as needed.</p>
+                
+                <form method="POST" action="settings.php?tab=backup" class="mb-4">
+                    <button type="submit" name="create_backup" class="btn btn-primary">
+                        <i class="fas fa-database me-2"></i>Create New Backup
+                    </button>
+                </form>
+                
+                <?php if (file_exists($backupDir) && is_dir($backupDir)): ?>
+                    <?php
+                    $files = scandir($backupDir);
+                    $backupFiles = [];
+                    
+                    foreach ($files as $file) {
+                        if ($file !== '.' && $file !== '..' && pathinfo($file, PATHINFO_EXTENSION) === 'zip') {
+                            $backupFiles[] = [
+                                'name' => $file,
+                                'path' => $backupDir . '/' . $file,
+                                'size' => filesize($backupDir . '/' . $file),
+                                'date' => filemtime($backupDir . '/' . $file)
+                            ];
+                        }
+                    }
+                    
+                    // Sort by date (newest first)
+                    usort($backupFiles, function($a, $b) {
+                        return $b['date'] - $a['date'];
+                    });
+                    ?>
+                    
+                    <?php if (count($backupFiles) > 0): ?>
+                        <h6 class="mt-4 mb-3">Available Backups:</h6>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Backup File</th>
+                                        <th>Size</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($backupFiles as $file): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($file['name']); ?></td>
+                                        <td><?php echo formatFileSize($file['size']); ?></td>
+                                        <td><?php echo date('M j, Y g:i a', $file['date']); ?></td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                <a href="download_backup.php?file=<?php echo urlencode($file['name']); ?>" class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-download me-1"></i>Download
+                                                </a>
+                                                <form method="POST" action="settings.php?tab=backup" class="d-inline">
+                                                    <input type="hidden" name="backup_file" value="<?php echo htmlspecialchars($file['name']); ?>">
+                                                    <button type="submit" name="delete_backup" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this backup?');">
+                                                        <i class="fas fa-trash-alt me-1"></i>Delete
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="alert alert-info mt-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Tip:</strong> It's recommended to download and store backups in a secure location regularly.
+                        </div>
+                    <?php else: ?>
+                        <div class="alert alert-warning mt-4">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            No backup files found. Create a backup to protect your data.
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
 .log-container {
     font-family: monospace;
     font-size: 0.85rem;
+    line-height: 1.5;
+    tab-size: 4;
     white-space: pre-wrap;
     word-break: break-all;
 }
@@ -710,8 +911,8 @@ function refreshLogs() {
                         Email Templates
                     </li>
                     <li class="list-group-item d-flex align-items-center">
-                        <i class="fas fa-check-circle text-muted me-3"></i>
-                        SLA Configuration
+                        <i class="fas fa-check-circle text-success me-3"></i>
+                        Database Backup
                     </li>
                     <li class="list-group-item d-flex align-items-center">
                         <i class="fas fa-check-circle text-muted me-3"></i>
