@@ -194,22 +194,22 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <?php foreach ($categories as $category): ?>
                             <tr>
                                 <td><?php echo $category['id']; ?></td>
-                                <td><?php echo htmlspecialchars($category['name']); ?></td>
-                                <td><?php echo htmlspecialchars($category['description']); ?></td>
-                                <td><?php echo $category['sla_days']; ?></td>
+                                <td><?php echo htmlspecialchars($category['name'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($category['description'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($category['sla_days'] ?? ''); ?></td>
                                 <td><?php echo date('M j, Y, g:i A', strtotime($category['created_at'])); ?></td>
                                 <td>
                                     <div class="btn-group" role="group">
                                         <button type="button" class="btn btn-sm btn-primary edit-category" 
                                                 data-id="<?php echo $category['id']; ?>"
-                                                data-name="<?php echo htmlspecialchars($category['name']); ?>"
-                                                data-description="<?php echo htmlspecialchars($category['description']); ?>"
-                                                data-sla-days="<?php echo $category['sla_days']; ?>">
+                                                data-name="<?php echo htmlspecialchars($category['name'] ?? ''); ?>"
+                                                data-description="<?php echo htmlspecialchars($category['description'] ?? ''); ?>"
+                                                data-sla-days="<?php echo htmlspecialchars($category['sla_days'] ?? ''); ?>">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button type="button" class="btn btn-sm btn-danger delete-category"
                                                 data-id="<?php echo $category['id']; ?>"
-                                                data-name="<?php echo htmlspecialchars($category['name']); ?>">
+                                                data-name="<?php echo htmlspecialchars($category['name'] ?? ''); ?>">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </div>
