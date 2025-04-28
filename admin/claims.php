@@ -949,29 +949,56 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     </div>
                     
                     <div class="mb-3">
-                        <label for="quick_agent_id" class="form-label">Select CS Agent</label>
+                        <label for="quick_agent_id" class="form-label">Select User</label>
                         <select class="form-select" id="quick_agent_id" name="agent_id" required>
-                            <option value="">-- Select Agent --</option>
+                            <option value="">-- Select User --</option>
                             <?php
-                            // Get all active CS agents
+                            // Get all active users
                             try {
                                 $stmt = $conn->prepare("
-                                    SELECT id, username, first_name, last_name
+                                    SELECT id, username, first_name, last_name, role
                                     FROM users
-                                    WHERE role = 'cs_agent' AND status = 'active'
-                                    ORDER BY first_name, last_name
+                                    WHERE status = 'active'
+                                    ORDER BY role, first_name, last_name
                                 ");
                                 $stmt->execute();
-                                $csAgents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                                $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 
-                                foreach ($csAgents as $agent) {
-                                    echo '<option value="' . $agent['id'] . '">' . 
-                                        htmlspecialchars($agent['first_name'] . ' ' . $agent['last_name'] . ' (' . $agent['username'] . ')') . 
-                                        '</option>';
+                                // Group users by role
+                                $usersByRole = [];
+                                foreach ($users as $user) {
+                                    $roleName = ucfirst(str_replace('_', ' ', $user['role']));
+                                    if (!isset($usersByRole[$roleName])) {
+                                        $usersByRole[$roleName] = [];
+                                    }
+                                    $usersByRole[$roleName][] = $user;
+                                }
+                                
+                                // Output users grouped by role
+                                foreach ($usersByRole as $roleName => $roleUsers) {
+                                    echo '<optgroup label="' . htmlspecialchars($roleName) . '">';
+                                    
+                                    foreach ($roleUsers as $user) {
+                                        // Format the role for display
+                                        $roleDisplay = ucfirst(str_replace('_', ' ', $user['role']));
+                                        
+                                        // Add a badge-like indicator for approvers
+                                        $roleBadge = '';
+                                        if ($user['role'] === 'approver') {
+                                            $roleBadge = ' <span style="color: #ff7700; font-weight: bold;">[Approver]</span>';
+                                        }
+                                        
+                                        echo '<option value="' . $user['id'] . '">' . 
+                                            htmlspecialchars($user['first_name'] . ' ' . $user['last_name'] . ' (' . $user['username'] . ')') . 
+                                            $roleBadge .
+                                            '</option>';
+                                    }
+                                    
+                                    echo '</optgroup>';
                                 }
                             } catch (PDOException $e) {
                                 // Log error
-                                error_log("Error retrieving CS agents: " . $e->getMessage());
+                                error_log("Error retrieving users: " . $e->getMessage());
                             }
                             ?>
                         </select>

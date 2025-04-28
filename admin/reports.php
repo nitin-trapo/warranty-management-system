@@ -50,7 +50,7 @@ try {
             'new' => 0,
             'in_progress' => 0,
             'on_hold' => 0,
-            'approved' => 0,
+            'resolved' => 0,
             'rejected' => 0
         ];
         
@@ -63,7 +63,7 @@ try {
         // Average resolution time
         $resolutionQuery = "SELECT AVG(TIMESTAMPDIFF(DAY, created_at, updated_at)) as avg_days 
                            FROM claims 
-                           WHERE status IN ('approved', 'rejected') 
+                           WHERE status IN ('resolved', 'rejected') 
                            AND created_at BETWEEN ? AND ? 
                            AND updated_at IS NOT NULL";
         $stmt = $conn->prepare($resolutionQuery);
@@ -78,7 +78,7 @@ try {
                     FROM claims c
                     LEFT JOIN claim_items ci ON c.id = ci.claim_id
                     LEFT JOIN claim_categories cc ON ci.category_id = cc.id
-                    WHERE c.status IN ('approved', 'rejected')
+                    WHERE c.status IN ('resolved', 'rejected')
                     AND c.created_at BETWEEN ? AND ?
                     AND c.updated_at IS NOT NULL";
         $stmt = $conn->prepare($slaQuery);
@@ -813,7 +813,10 @@ try {
             responsive: true,
             scrollX: false,
             autoWidth: false,
-            dom: '<"row align-items-center mb-4"<"col-md-6"B><"col-md-6"f>>rtip',
+            lengthChange: true,
+            pageLength: 10,
+            lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
+            dom: '<"row align-items-center mb-4"<"col-md-6"B><"col-md-6"f>><"row"<"col-md-6"l><"col-md-6"p>>rtip',
             buttons: [
                 {
                     extend: 'excel',
@@ -905,13 +908,13 @@ try {
         const statusChart = new Chart(statusCtx, {
             type: 'pie',
             data: {
-                labels: ['New', 'In Progress', 'On Hold', 'Approved', 'Rejected'],
+                labels: ['New', 'In Progress', 'On Hold', 'Resolved', 'Rejected'],
                 datasets: [{
                     data: [
                         <?php echo $statusCounts['new']; ?>,
                         <?php echo $statusCounts['in_progress']; ?>,
                         <?php echo $statusCounts['on_hold']; ?>,
-                        <?php echo $statusCounts['approved']; ?>,
+                        <?php echo $statusCounts['resolved']; ?>,
                         <?php echo $statusCounts['rejected']; ?>
                     ],
                     backgroundColor: [
