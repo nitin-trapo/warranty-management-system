@@ -34,6 +34,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'add_category') {
         $name = trim($_POST['name']);
         $description = trim($_POST['description']);
         $slaDays = isset($_POST['sla_days']) ? (int)$_POST['sla_days'] : 7;
+        $approver = isset($_POST['approver']) ? trim($_POST['approver']) : null;
         
         if (empty($name)) {
             throw new Exception('Category name is required');
@@ -52,8 +53,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'add_category') {
         }
         
         // Insert new category
-        $stmt = $conn->prepare("INSERT INTO claim_categories (name, description, sla_days) VALUES (?, ?, ?)");
-        $stmt->execute([$name, $description, $slaDays]);
+        $stmt = $conn->prepare("INSERT INTO claim_categories (name, description, sla_days, approver) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$name, $description, $slaDays, $approver]);
         
         $successMessage = 'Category added successfully';
     } catch (Exception $e) {
@@ -116,6 +117,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit_category') {
         $name = trim($_POST['name']);
         $description = trim($_POST['description']);
         $slaDays = isset($_POST['sla_days']) ? (int)$_POST['sla_days'] : 7;
+        $approver = isset($_POST['approver']) ? trim($_POST['approver']) : null;
         
         if (empty($name)) {
             throw new Exception('Category name is required');
@@ -134,8 +136,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit_category') {
         }
         
         // Update category
-        $stmt = $conn->prepare("UPDATE claim_categories SET name = ?, description = ?, sla_days = ? WHERE id = ?");
-        $stmt->execute([$name, $description, $slaDays, $categoryId]);
+        $stmt = $conn->prepare("UPDATE claim_categories SET name = ?, description = ?, sla_days = ?, approver = ? WHERE id = ?");
+        $stmt->execute([$name, $description, $slaDays, $approver, $categoryId]);
         
         $successMessage = 'Category updated successfully';
     } catch (Exception $e) {
@@ -186,6 +188,7 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <th>Name</th>
                             <th>Description</th>
                             <th>SLA Days</th>
+                            <th>Approver</th>
                             <th>Created</th>
                             <th>Actions</th>
                         </tr>
@@ -197,6 +200,7 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td><?php echo htmlspecialchars($category['name'] ?? ''); ?></td>
                                 <td><?php echo htmlspecialchars($category['description'] ?? ''); ?></td>
                                 <td><?php echo htmlspecialchars($category['sla_days'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($category['approver'] ?? ''); ?></td>
                                 <td><?php echo date('M j, Y, g:i A', strtotime($category['created_at'])); ?></td>
                                 <td>
                                     <div class="btn-group" role="group">
@@ -204,7 +208,8 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 data-id="<?php echo $category['id']; ?>"
                                                 data-name="<?php echo htmlspecialchars($category['name'] ?? ''); ?>"
                                                 data-description="<?php echo htmlspecialchars($category['description'] ?? ''); ?>"
-                                                data-sla-days="<?php echo htmlspecialchars($category['sla_days'] ?? ''); ?>">
+                                                data-sla-days="<?php echo htmlspecialchars($category['sla_days'] ?? ''); ?>"
+                                                data-approver="<?php echo htmlspecialchars($category['approver'] ?? ''); ?>">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button type="button" class="btn btn-sm btn-danger delete-category"
@@ -250,6 +255,16 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <label for="sla_days" class="form-label fw-bold">SLA Days</label>
                         <input type="number" class="form-control" id="sla_days" name="sla_days" required>
                     </div>
+                    
+                    <div class="mb-3">
+                        <label for="approver" class="form-label fw-bold">Approver</label>
+                        <select class="form-select" id="approver" name="approver">
+                            <option value="">-- Select Approver --</option>
+                            <option value="Production coordinator">Production coordinator</option>
+                            <option value="Stan">Stan</option>
+                            <option value="Finance">Finance</option>
+                        </select>
+                    </div>
                 </div>
                 
                 <div class="modal-footer">
@@ -288,6 +303,16 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <div class="mb-3">
                         <label for="edit_sla_days" class="form-label fw-bold">SLA Days</label>
                         <input type="number" class="form-control" id="edit_sla_days" name="sla_days" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit_approver" class="form-label fw-bold">Approver</label>
+                        <select class="form-select" id="edit_approver" name="approver">
+                            <option value="">-- Select Approver --</option>
+                            <option value="Production coordinator">Production coordinator</option>
+                            <option value="Stan">Stan</option>
+                            <option value="Finance">Finance</option>
+                        </select>
                     </div>
                 </div>
                 
@@ -342,11 +367,13 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
             const categoryName = $(this).data('name');
             const categoryDescription = $(this).data('description');
             const categorySlaDays = $(this).data('sla-days');
+            const categoryApprover = $(this).data('approver');
             
             $('#edit_category_id').val(categoryId);
             $('#edit_name').val(categoryName);
             $('#edit_description').val(categoryDescription);
             $('#edit_sla_days').val(categorySlaDays);
+            $('#edit_approver').val(categoryApprover);
             
             $('#editCategoryModal').modal('show');
         });

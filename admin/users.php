@@ -70,11 +70,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'add_user') {
         
         // Insert new user
         $stmt = $conn->prepare("
-            INSERT INTO users (username, password, email, first_name, last_name, role, status) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, password, email, first_name, last_name, role, approver_role, status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
-        $stmt->execute([$username, $defaultPassword, $email, $firstName, $lastName, $role, $status]);
+        $stmt->execute([$username, $defaultPassword, $email, $firstName, $lastName, $role, $approverRole, $status]);
         
         // Get the new user ID
         $newUserId = $conn->lastInsertId();
@@ -103,6 +103,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit_user') {
         $firstName = trim($_POST['first_name']);
         $lastName = trim($_POST['last_name']);
         $role = $_POST['role'];
+        $approverRole = isset($_POST['approver_role']) ? $_POST['approver_role'] : '';
         $status = $_POST['status'];
         
         // Validate required fields
@@ -134,11 +135,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit_user') {
         // Update user
         $stmt = $conn->prepare("
             UPDATE users 
-            SET username = ?, email = ?, first_name = ?, last_name = ?, role = ?, status = ? 
+            SET username = ?, email = ?, first_name = ?, last_name = ?, role = ?, approver_role = ?, status = ? 
             WHERE id = ?
         ");
         
-        $stmt->execute([$username, $email, $firstName, $lastName, $role, $status, $userId]);
+        $stmt->execute([$username, $email, $firstName, $lastName, $role, $approverRole, $status, $userId]);
         
         setSuccessAlert('User updated successfully');
     } catch (Exception $e) {
@@ -240,6 +241,7 @@ $users = $stmt->fetchAll();
                         <th>Email</th>
                         <th>Name</th>
                         <th>Role</th>
+                        <th>Approver Role</th>
                         <th>Status</th>
                         <th>Created</th>
                         <th>Actions</th>
@@ -258,6 +260,13 @@ $users = $stmt->fetchAll();
                                 </span>
                             </td>
                             <td>
+                                <?php if (!empty($user['approver_role'])): ?>
+                                    <span class="badge bg-info"><?php echo htmlspecialchars($user['approver_role']); ?></span>
+                                <?php else: ?>
+                                    <span class="badge bg-light text-dark">None</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
                                 <span class="badge <?php echo $user['status'] === 'active' ? 'bg-success' : 'bg-secondary'; ?>">
                                     <?php echo ucfirst($user['status']); ?>
                                 </span>
@@ -272,6 +281,7 @@ $users = $stmt->fetchAll();
                                         data-firstname="<?php echo htmlspecialchars($user['first_name']); ?>"
                                         data-lastname="<?php echo htmlspecialchars($user['last_name']); ?>"
                                         data-role="<?php echo $user['role']; ?>"
+                                        data-approver-role="<?php echo htmlspecialchars($user['approver_role']); ?>"
                                         data-status="<?php echo $user['status']; ?>"
                                         data-bs-toggle="modal" data-bs-target="#editUserModal">
                                         <i class="fas fa-edit"></i>
@@ -341,6 +351,18 @@ $users = $stmt->fetchAll();
                     </div>
                     
                     <div class="mb-3">
+                        <label for="add_approver_role" class="form-label">Approver Role</label>
+                        <select class="form-select" id="add_approver_role" name="approver_role">
+                            <option value="">-- None --</option>
+                            <option value="Production coordinator">Production coordinator</option>
+                            <option value="Stan">Stan</option>
+                            <option value="Finance">Finance</option>
+                        </select>
+                    </div>
+                    
+
+                    
+                    <div class="mb-3">
                         <label for="status" class="form-label">Status</label>
                         <select class="form-select" id="add_status" name="status" required>
                             <option value="active">Active</option>
@@ -406,6 +428,18 @@ $users = $stmt->fetchAll();
                     </div>
                     
                     <div class="mb-3">
+                        <label for="edit_approver_role" class="form-label">Approver Role</label>
+                        <select class="form-select" id="edit_approver_role" name="approver_role">
+                            <option value="">-- None --</option>
+                            <option value="Production coordinator">Production coordinator</option>
+                            <option value="Stan">Stan</option>
+                            <option value="Finance">Finance</option>
+                        </select>
+                    </div>
+                    
+
+                    
+                    <div class="mb-3">
                         <label for="edit_status" class="form-label">Status</label>
                         <select class="form-select" id="edit_status" name="status" required>
                             <option value="active">Active</option>
@@ -464,8 +498,8 @@ require_once 'includes/footer.php';
         var usersTable = $('#usersTable').DataTable({
             order: [[0, 'asc']], // Sort by ID by default
             columnDefs: [
-                { orderable: false, targets: [7] }, // Disable sorting on actions column
-                { className: 'text-center', targets: [4, 5, 7] } // Center align status, role and actions columns
+                { orderable: false, targets: [8] }, // Disable sorting on actions column
+                { className: 'text-center', targets: [4, 5, 6, 8] } // Center align role, approver role, status and actions columns
             ],
             lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
             pageLength: 25,
@@ -556,6 +590,7 @@ require_once 'includes/footer.php';
             const firstName = $(this).data('firstname');
             const lastName = $(this).data('lastname');
             const role = $(this).data('role');
+            const approverRole = $(this).data('approver-role');
             const status = $(this).data('status');
             
             $('#edit_user_id').val(userId);
@@ -564,6 +599,7 @@ require_once 'includes/footer.php';
             $('#edit_first_name').val(firstName);
             $('#edit_last_name').val(lastName);
             $('#edit_role').val(role);
+            $('#edit_approver_role').val(approverRole);
             $('#edit_status').val(status);
         });
         
