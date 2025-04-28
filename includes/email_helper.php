@@ -592,7 +592,7 @@ function sendTaggedUserNotification($taggedUsers, $claim, $note, $taggerName) {
             $emailContent .= "<tr><td style='padding: 8px; border: 1px solid #ddd;'><strong>Status</strong></td><td style='padding: 8px; border: 1px solid #ddd;'>" . ucfirst(str_replace('_', ' ', $claim['status'])) . "</td></tr>";
             $emailContent .= "</table>";
             
-            $emailContent .= "<p><a href='" . getSystemUrl() . "/admin/view_claim.php?id={$claim['id']}' style='display: inline-block; padding: 10px 15px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 4px;'>View Claim</a></p>";
+            $emailContent .= "<p><a href='" . getSystemUrl() . "/view_claim.php?id={$claim['id']}' style='display: inline-block; padding: 10px 15px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 4px;'>View Claim</a></p>";
             
             $emailContent .= "<p>Thank you,<br>TRAPO</p>";
             
@@ -609,8 +609,8 @@ function sendTaggedUserNotification($taggedUsers, $claim, $note, $taggerName) {
             $plainText .= "Order ID: {$claim['order_id']}\n";
             $plainText .= "Customer: {$claim['customer_name']}\n";
             $plainText .= "Status: " . ucfirst(str_replace('_', ' ', $claim['status'])) . "\n\n";
-            $plainText .= "To view the claim, please visit: " . getSystemUrl() . "/admin/view_claim.php?id={$claim['id']}\n\n";
-            $plainText .= "Thank you,\nWarranty Management System";
+            $plainText .= "To view the claim, please visit: " . getSystemUrl() . "/view_claim.php?id={$claim['id']}\n\n";
+            $plainText .= "Thank you,\nTRAPO";
             
             $userMail->AltBody = $plainText;
             
