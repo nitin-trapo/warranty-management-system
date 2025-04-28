@@ -25,6 +25,8 @@ require_once __DIR__ . '/template_helper.php';
 // Define email log file path
 define('EMAIL_LOG_FILE', ROOT_PATH . '/logs/email.log');
 
+// We'll use email settings from email_config.php instead of defining defaults here
+
 // Create logs directory if it doesn't exist
 if (!file_exists(ROOT_PATH . '/logs')) {
     mkdir(ROOT_PATH . '/logs', 0755, true);
@@ -34,6 +36,20 @@ if (!file_exists(ROOT_PATH . '/logs')) {
 if (!file_exists(EMAIL_LOG_FILE)) {
     file_put_contents(EMAIL_LOG_FILE, "Email Log File Created: " . date('Y-m-d H:i:s') . "\n");
     chmod(EMAIL_LOG_FILE, 0644);
+}
+
+/**
+ * Get an email setting from the system settings
+ * 
+ * @param string $key Setting key
+ * @param mixed $default Default value if setting not found
+ * @return mixed Setting value or default if not found
+ */
+function getEmailSetting($key, $default = null) {
+    // Email settings are stored with 'email_' prefix in system settings
+    $emailKey = 'email_' . $key;
+    $value = getSystemSetting($emailKey);
+    return $value !== null ? $value : $default;
 }
 
 /**
@@ -491,6 +507,154 @@ function generateClaimPlainText($claim, $claimItems, $isCustomer = false, $isSta
     }
     
     return $text;
+}
+
+/**
+ * Send email notification to users tagged in a claim note
+ * 
+ * @param array $taggedUsers Array of tagged user data (id, username, email)
+ * @param array $claim Claim data
+ * @param string $note The note content
+ * @param string $taggerName Name of the user who tagged others
+ * @return bool True if at least one email was sent successfully
+ */
+function sendTaggedUserNotification($taggedUsers, $claim, $note, $taggerName) {
+    if (empty($taggedUsers)) {
+        return false;
+    }
+    
+    logEmail("==== STARTING TAGGED USER NOTIFICATION ====");
+    logEmail("Claim ID: " . ($claim['id'] ?? 'unknown'));
+    logEmail("Claim Number: " . ($claim['claim_number'] ?? 'unknown'));
+    logEmail("Tagged Users: " . json_encode($taggedUsers));
+    
+    try {
+        // Get email configuration from email_config.php
+        $config = getEmailConfig();
+        
+        // Initialize counters
+        $emailsSent = 0;
+        $emailErrors = [];
+        
+        // Create base PHPMailer instance
+        $mail = new PHPMailer(true);
+        
+        // Configure the mailer using the email_config.php settings
+        $mail = configureMailer($mail);
+        
+        // Set from address
+        $fromEmail = $config['from_email'] ?? 'noreply@example.com';
+        $fromName = $config['from_name'] ?? 'Warranty Management System';
+        $mail->setFrom($fromEmail, $fromName);
+        
+        // Set reply-to address if available
+        $replyTo = $config['reply_to'] ?? '';
+        if (!empty($replyTo)) {
+            $mail->addReplyTo($replyTo);
+        }
+        
+        // Set debug level
+        $debugLevel = (int)getEmailSetting('debug_level', 0);
+        $mail->SMTPDebug = $debugLevel;
+        $mail->Debugoutput = function($str, $level) {
+            logEmail("PHPMailer [$level]: $str");
+        };
+        
+        // Process each tagged user
+        foreach ($taggedUsers as $user) {
+            if (!filter_var($user['email'], FILTER_VALIDATE_EMAIL)) {
+                logEmail("Invalid email format for user {$user['username']}: {$user['email']}");
+                continue;
+            }
+            
+            // Create a new mail instance for each recipient
+            $userMail = clone $mail;
+            $userMail->clearAddresses();
+            $userMail->addAddress($user['email'], $user['username']);
+            
+            // Set email subject
+            $subject = "You were tagged in a claim note - Claim #{$claim['claim_number']}";
+            $userMail->Subject = $subject;
+            
+            // Create email content
+            $emailContent = "<p>Hello {$user['username']},</p>";
+            $emailContent .= "<p>You have been mentioned by <strong>{$taggerName}</strong> in a note on claim #{$claim['claim_number']}.</p>";
+            $emailContent .= "<p><strong>Note Content:</strong></p>";
+            $emailContent .= "<div style='background-color: #f5f5f5; padding: 10px; border-left: 4px solid #007bff; margin-bottom: 15px;'>";
+            $emailContent .= nl2br(htmlspecialchars($note));
+            $emailContent .= "</div>";
+            
+            $emailContent .= "<h3>Claim Details</h3>";
+            $emailContent .= "<table style='border-collapse: collapse; width: 100%;'>";
+            $emailContent .= "<tr><td style='padding: 8px; border: 1px solid #ddd;'><strong>Claim Number</strong></td><td style='padding: 8px; border: 1px solid #ddd;'>{$claim['claim_number']}</td></tr>";
+            $emailContent .= "<tr><td style='padding: 8px; border: 1px solid #ddd;'><strong>Order ID</strong></td><td style='padding: 8px; border: 1px solid #ddd;'>{$claim['order_id']}</td></tr>";
+            $emailContent .= "<tr><td style='padding: 8px; border: 1px solid #ddd;'><strong>Customer</strong></td><td style='padding: 8px; border: 1px solid #ddd;'>{$claim['customer_name']}</td></tr>";
+            $emailContent .= "<tr><td style='padding: 8px; border: 1px solid #ddd;'><strong>Status</strong></td><td style='padding: 8px; border: 1px solid #ddd;'>" . ucfirst(str_replace('_', ' ', $claim['status'])) . "</td></tr>";
+            $emailContent .= "</table>";
+            
+            $emailContent .= "<p><a href='" . getSystemUrl() . "/admin/view_claim.php?id={$claim['id']}' style='display: inline-block; padding: 10px 15px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 4px;'>View Claim</a></p>";
+            
+            $emailContent .= "<p>Thank you,<br>TRAPO</p>";
+            
+            // Set email content
+            $userMail->isHTML(true);
+            $userMail->Body = $emailContent;
+            
+            // Create plain text version
+            $plainText = "Hello {$user['username']},\n\n";
+            $plainText .= "You have been tagged by {$taggerName} in a note on claim #{$claim['claim_number']}.\n\n";
+            $plainText .= "Note Content:\n{$note}\n\n";
+            $plainText .= "Claim Details:\n";
+            $plainText .= "Claim Number: {$claim['claim_number']}\n";
+            $plainText .= "Order ID: {$claim['order_id']}\n";
+            $plainText .= "Customer: {$claim['customer_name']}\n";
+            $plainText .= "Status: " . ucfirst(str_replace('_', ' ', $claim['status'])) . "\n\n";
+            $plainText .= "To view the claim, please visit: " . getSystemUrl() . "/admin/view_claim.php?id={$claim['id']}\n\n";
+            $plainText .= "Thank you,\nWarranty Management System";
+            
+            $userMail->AltBody = $plainText;
+            
+            // Send email
+            try {
+                if ($userMail->send()) {
+                    logEmail("Tagged user notification email sent successfully to {$user['username']} ({$user['email']})");
+                    $emailsSent++;
+                } else {
+                    $error = "Failed to send tagged user notification to {$user['username']}: " . $userMail->ErrorInfo;
+                    logEmail($error);
+                    $emailErrors[] = $error;
+                }
+            } catch (Exception $e) {
+                $error = "Error sending tagged user notification to {$user['username']}: " . $e->getMessage();
+                logEmail($error);
+                $emailErrors[] = $error;
+            }
+        }
+        
+        // Log summary
+        logEmail("Tagged user notification complete. Emails sent: $emailsSent, Errors: " . count($emailErrors));
+        if (!empty($emailErrors)) {
+            logEmail("Email errors: " . json_encode($emailErrors));
+        }
+        
+        return $emailsSent > 0;
+    } catch (Exception $e) {
+        logEmail("Failed to send tagged user notifications: {$e->getMessage()}");
+        logEmail("Exception trace: " . $e->getTraceAsString());
+        return false;
+    }
+}
+
+/**
+ * Get system URL
+ * 
+ * @return string The system URL
+ */
+function getSystemUrl() {
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+    $domainName = $_SERVER['HTTP_HOST'];
+    $baseDir = dirname(dirname($_SERVER['PHP_SELF']));
+    return $protocol . $domainName . $baseDir;
 }
 
 /**

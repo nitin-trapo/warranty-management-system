@@ -8,6 +8,9 @@
 // Include database connection
 require_once '../../config/database.php';
 
+// Include email helper
+require_once '../../includes/email_helper.php';
+
 // Start session if not already started
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -55,6 +58,13 @@ try {
     // Get current user ID (assuming user is logged in)
     $userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 1; // Default to 1 if not set
     
+    // Get current user info for notification
+    $userQuery = "SELECT username, email FROM users WHERE id = ?";
+    $userStmt = $conn->prepare($userQuery);
+    $userStmt->execute([$userId]);
+    $currentUser = $userStmt->fetch(PDO::FETCH_ASSOC);
+    $taggerName = $currentUser['username'] ?? 'System';
+    
     // Add note to claim_notes table
     $query = "INSERT INTO claim_notes (claim_id, note, new_skus, created_by, created_at) 
               VALUES (?, ?, ?, ?, NOW())";
@@ -73,11 +83,86 @@ try {
     $stmt->execute([$noteId]);
     $noteData = $stmt->fetch(PDO::FETCH_ASSOC);
     
+    // Process tagged users
+    $taggedUsers = [];
+    
+    // Extract @username mentions from the note
+    preg_match_all('/@([\w.]+)/', $note, $matches);
+    
+    if (!empty($matches[1])) {
+        // Get unique usernames
+        $mentionedUsernames = array_unique($matches[1]);
+        
+        // Get claim data for notification
+        $claimQuery = "SELECT c.*, u.username as created_by_name 
+                      FROM claims c 
+                      LEFT JOIN users u ON c.created_by = u.id 
+                      WHERE c.id = ?";
+        $claimStmt = $conn->prepare($claimQuery);
+        $claimStmt->execute([$claimId]);
+        $claim = $claimStmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Look up each mentioned user
+        $placeholders = implode(',', array_fill(0, count($mentionedUsernames), '?'));
+        $userQuery = "SELECT id, username, email FROM users WHERE username IN ($placeholders)";
+        $userStmt = $conn->prepare($userQuery);
+        $userStmt->execute($mentionedUsernames);
+        $taggedUsers = $userStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Process tagged users for UI display only
+        if (!empty($taggedUsers) && !empty($claim)) {
+            // Remove @ symbols from note for email notification
+            $cleanNote = preg_replace('/@([\w.]+)/', '$1', $note);
+            
+            // Email settings are now properly configured from email_config.php
+            // Set to true to disable emails for testing
+            $disableEmails = false;
+            
+            if (!$disableEmails) {
+                // Store notification in database to prevent duplicates
+                // Check if we've already sent a notification for this note
+                $checkQuery = "SELECT id FROM claim_note_notifications WHERE note_id = ?";
+                $checkStmt = $conn->prepare($checkQuery);
+                $checkStmt->execute([$noteId]);
+                
+                if ($checkStmt->rowCount() === 0) {
+                    // No notification has been sent for this note yet
+                    try {
+                        // Begin transaction to ensure data consistency
+                        $conn->beginTransaction();
+                        
+                        // Insert notification record first to prevent duplicates
+                        $insertNotificationQuery = "INSERT INTO claim_note_notifications 
+                                                  (note_id, sent_at, recipients) 
+                                                  VALUES (?, NOW(), ?)";
+                        $insertStmt = $conn->prepare($insertNotificationQuery);
+                        $insertStmt->execute([
+                            $noteId,
+                            json_encode(array_column($taggedUsers, 'username'))
+                        ]);
+                        
+                        // Send the notification
+                        $emailResult = sendTaggedUserNotification($taggedUsers, $claim, $cleanNote, $taggerName);
+                        
+                        // Commit the transaction
+                        $conn->commit();
+                    } catch (Exception $e) {
+                        // If anything goes wrong, roll back the transaction
+                        $conn->rollBack();
+                        error_log("Error sending notification: " . $e->getMessage());
+                    }
+                }
+            }
+        }
+    }
+    
     // Return success response
     echo json_encode([
         'success' => true,
-        'message' => 'Note added successfully.',
-        'note' => $noteData
+        'message' => 'Note added successfully.' . 
+                    (!empty($taggedUsers) ? ' Tagged users have been notified.' : ''),
+        'note' => $noteData,
+        'tagged_users' => $taggedUsers
     ]);
     
 } catch (PDOException $e) {

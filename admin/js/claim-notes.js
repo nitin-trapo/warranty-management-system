@@ -2,22 +2,37 @@
  * Claim Notes and Status Management
  * 
  * This file handles AJAX functionality for claim notes and status updates
+ * Includes protection against duplicate form submissions
  */
 
 $(document).ready(function() {
+    // Global submission flags to prevent duplicates
+    let isSubmittingStatus = false;
+    let isSubmittingNote = false;
+    let noteSubmissionId = null;
+    
+    // ====== STATUS UPDATE HANDLING ======
+    
     // Handle status update form submission
     $('#updateStatusForm').on('submit', function(e) {
         e.preventDefault();
-        updateClaimStatus();
+        if (!isSubmittingStatus) {
+            updateClaimStatus();
+        }
     });
     
     // Handle the update status button click
     $('.update-status-btn').on('click', function(e) {
         e.preventDefault();
-        updateClaimStatus();
+        if (!isSubmittingStatus) {
+            updateClaimStatus();
+        }
     });
     
     function updateClaimStatus() {
+        // Set flag to prevent duplicate submissions
+        isSubmittingStatus = true;
+        
         const formData = $('#updateStatusForm').serialize();
         const claimId = $('#updateStatusForm input[name="claim_id"]').val();
         const modal = $('#updateStatusModal');
@@ -52,13 +67,20 @@ $(document).ready(function() {
                 } else {
                     // Show error message
                     showAlert('danger', response.message || 'An error occurred while updating the status.');
+                    
+                    // Reset submission flag on error
+                    isSubmittingStatus = false;
                 }
             },
             error: function(xhr, status, error) {
                 console.error("AJAX Error:", status, error);
                 console.log("Response:", xhr.responseText);
+                
                 // Show error message
                 showAlert('danger', 'An error occurred while updating the status. Please try again.');
+                
+                // Reset submission flag on error
+                isSubmittingStatus = false;
             },
             complete: function() {
                 // Reset button state
@@ -68,19 +90,32 @@ $(document).ready(function() {
         });
     }
     
+    // ====== NOTE ADDITION HANDLING ======
+    
     // Handle add note form submission
     $('#addNoteForm').on('submit', function(e) {
         e.preventDefault();
-        addClaimNote();
+        if (!isSubmittingNote) {
+            addClaimNote();
+        }
     });
     
     // Handle the add note button click
     $('.add-note-btn').on('click', function(e) {
         e.preventDefault();
-        addClaimNote();
+        if (!isSubmittingNote) {
+            addClaimNote();
+        }
     });
     
     function addClaimNote() {
+        // Set flag to prevent duplicate submissions
+        isSubmittingNote = true;
+        
+        // Generate a unique submission ID
+        noteSubmissionId = Date.now() + Math.floor(Math.random() * 1000);
+        const currentSubmissionId = noteSubmissionId;
+        
         const formData = $('#addNoteForm').serialize();
         const modal = $('#addNoteModal');
         
@@ -96,44 +131,77 @@ $(document).ready(function() {
             data: formData,
             dataType: 'json',
             success: function(response) {
+                // Only process if this is still the current submission
+                // This prevents race conditions with multiple clicks
+                if (currentSubmissionId !== noteSubmissionId) {
+                    console.log('Ignoring outdated response');
+                    return;
+                }
+                
                 // Hide modal
                 modal.modal('hide');
                 
                 // Reset form
                 $('#addNoteForm')[0].reset();
+                $('#taggedUsersPreview').hide();
                 
                 // Show success message
                 if (response.success) {
-                    // Add the new note to the notes table if notes exist
-                    if ($('.notes-table').length) {
-                        addNoteToTable(response.note);
-                    } else {
-                        // If no notes table exists, reload the page to show the notes section
-                        location.reload();
-                    }
-                    
                     // Show success message
                     showAlert('success', response.message);
                     
-                    // Refresh the page after a short delay
-                    setTimeout(function() {
-                        location.reload();
-                    }, 1000); // 1 second delay to show the success message
+                    // Handle the note display - either add to table or reload page
+                    // but never both to avoid duplicates
+                    if ($('.notes-table').length) {
+                        // Add to existing table without page reload
+                        addNoteToTable(response.note);
+                    } else {
+                        // No table exists, reload page to show the notes section
+                        setTimeout(function() {
+                            location.reload();
+                        }, 1000);
+                    }
                 } else {
                     // Show error message
                     showAlert('danger', response.message || 'An error occurred while adding the note.');
+                    
+                    // Reset submission flag on error
+                    isSubmittingNote = false;
                 }
             },
             error: function(xhr, status, error) {
+                // Only process if this is still the current submission
+                if (currentSubmissionId !== noteSubmissionId) {
+                    console.log('Ignoring outdated error');
+                    return;
+                }
+                
                 console.error("AJAX Error:", status, error);
                 console.log("Response:", xhr.responseText);
+                
                 // Show error message
                 showAlert('danger', 'An error occurred while adding the note. Please try again.');
+                
+                // Reset submission flag on error
+                isSubmittingNote = false;
             },
             complete: function() {
+                // Only process if this is still the current submission
+                if (currentSubmissionId !== noteSubmissionId) {
+                    console.log('Ignoring outdated completion');
+                    return;
+                }
+                
                 // Reset button state
                 submitBtn.html(originalBtnText);
                 submitBtn.prop('disabled', false);
+                
+                // Reset submission flag after a short delay
+                setTimeout(function() {
+                    if (currentSubmissionId === noteSubmissionId) {
+                        isSubmittingNote = false;
+                    }
+                }, 1000);
             }
         });
     }

@@ -740,7 +740,15 @@ foreach ($mediaResults as $mediaItem) {
                                 <?php foreach ($notes as $index => $note): ?>
                                 <tr>
                                     <td><?php echo $index + 1; ?></td>
-                                    <td><?php echo nl2br(htmlspecialchars($note['note'])); ?></td>
+                                    <td>
+                                        <?php 
+                                        // Process the note to highlight tagged users
+                                        $noteText = htmlspecialchars($note['note']);
+                                        // Replace @username with highlighted version
+                                        $noteText = preg_replace('/@([a-zA-Z0-9._]+)/', '<span class="badge bg-info text-dark">@$1</span>', $noteText);
+                                        echo nl2br($noteText); 
+                                        ?>
+                                    </td>
                                     <td><?php echo htmlspecialchars($note['created_by_name'] ?? 'System'); ?></td>
                                     <td><?php echo date('M d, Y h:i A', strtotime($note['created_at'])); ?></td>
                                 </tr>
@@ -813,8 +821,17 @@ foreach ($mediaResults as $mediaItem) {
                     <div class="mb-3">
                         <label for="note_text" class="form-label">Note</label>
                         <textarea class="form-control" id="note_text" name="note" rows="4" required></textarea>
+                        <div class="form-text">
+                            <i class="fas fa-info-circle"></i> You can tag users with @username to notify them about this note.
+                        </div>
                     </div>
-
+                    
+                    <div class="mb-3" id="taggedUsersPreview" style="display: none;">
+                        <label class="form-label">Tagged Users</label>
+                        <div class="tagged-users-list p-2 border rounded bg-light">
+                            <span class="text-muted">No users tagged yet</span>
+                        </div>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -825,11 +842,17 @@ foreach ($mediaResults as $mediaItem) {
     </div>
 </div>
 
+<!-- User Tagging Suggestions Dropdown -->
+<div class="dropdown-menu" id="userSuggestionsDropdown"></div>
+
 <!-- Include jQuery if not already included -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <!-- Include claim notes JS -->
 <script src="js/claim-notes.js"></script>
+
+<!-- Include user tagging JS -->
+<script src="js/user-tagging.js"></script>
 
 <script>
     $(document).ready(function() {
@@ -989,60 +1012,8 @@ foreach ($mediaResults as $mediaItem) {
             $('#claim-items').append(template);
         }
         
-        // Handle add note form submission
-        $('.add-note-btn').on('click', function(e) {
-            e.preventDefault();
-            addClaimNote();
-        });
-        
-        function addClaimNote() {
-            const formData = $('#addNoteForm').serialize();
-            const modal = $('#addNoteModal');
-            
-            // Show loading state
-            const submitBtn = modal.find('.add-note-btn');
-            const originalBtnText = submitBtn.html();
-            submitBtn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...');
-            submitBtn.prop('disabled', true);
-            
-            $.ajax({
-                url: 'ajax/add_claim_note.php',
-                type: 'POST',
-                data: formData,
-                dataType: 'json',
-                success: function(response) {
-                    // Hide modal
-                    modal.modal('hide');
-                    
-                    // Reset form
-                    $('#addNoteForm')[0].reset();
-                    
-                    if (response.success) {
-                        // Show success message
-                        showAlert('success', response.message);
-                        
-                        // Refresh the page after a short delay
-                        setTimeout(function() {
-                            location.reload();
-                        }, 1000);
-                    } else {
-                        // Show error message
-                        showAlert('danger', response.message || 'An error occurred while adding the note.');
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error("AJAX Error:", status, error);
-                    
-                    // Show error message
-                    showAlert('danger', 'An error occurred while adding the note. Please try again.');
-                },
-                complete: function() {
-                    // Reset button state
-                    submitBtn.html(originalBtnText);
-                    submitBtn.prop('disabled', false);
-                }
-            });
-        }
+        // Note: The add note functionality is now handled by claim-notes.js
+        // This prevents duplicate event handlers and AJAX calls
         
         // Function to show alert messages
         function showAlert(type, message) {
