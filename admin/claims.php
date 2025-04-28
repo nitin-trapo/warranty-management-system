@@ -18,6 +18,15 @@ require_once '../config/database.php';
 // Include ODIN API helper
 require_once '../includes/odin_api_helper.php';
 
+// Include email helper
+require_once '../includes/email_helper.php';
+
+// Include user helper
+require_once '../includes/user_helper.php';
+
+// Include category helper
+require_once '../includes/category_helper.php';
+
 // Establish database connection
 $conn = getDbConnection();
 
@@ -350,6 +359,91 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
         $claimCount = count($insertedClaimIds);
         $_SESSION['success_message'] = "Successfully created {$claimCount} warranty claim(s) for order {$orderId}.";
         
+        // Send email notifications to approvers based on category
+        foreach ($insertedClaimIds as $index => $claimId) {
+            try {
+                // Get the category ID for this claim
+                $categoryId = $categoryIds[$index];
+                
+                // Get category details including approver
+                $categoryStmt = $conn->prepare("SELECT * FROM claim_categories WHERE id = ?");
+                $categoryStmt->execute([$categoryId]);
+                $category = $categoryStmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$category) {
+                    error_log("Category not found for ID: $categoryId");
+                    continue;
+                }
+                
+                $approverRole = $category['approver'] ?? null;
+                error_log("Category ID: $categoryId, Name: {$category['name']}, Approver Role: " . ($approverRole ?: 'None'));
+                
+                if (empty($approverRole)) {
+                    error_log("No approver role set for category ID: $categoryId");
+                    continue;
+                }
+                
+                // Get users with this approver role
+                $approverStmt = $conn->prepare("SELECT id, username, email, first_name, last_name, approver_role FROM users WHERE approver_role = ? AND status = 'active'");
+                $approverStmt->execute([$approverRole]);
+                $approvers = $approverStmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                error_log("Found " . count($approvers) . " approvers for role: $approverRole");
+                error_log("Approvers: " . json_encode($approvers));
+                
+                if (!empty($approvers)) {
+                    // Get claim details for email
+                    $claimStmt = $conn->prepare("SELECT c.*, u.email as created_by_email, u.first_name as created_by_first_name, u.last_name as created_by_last_name 
+                                               FROM claims c 
+                                               LEFT JOIN users u ON c.created_by = u.id 
+                                               WHERE c.id = ?");
+                    $claimStmt->execute([$claimId]);
+                    $claim = $claimStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    // Get claim items
+                    $itemsStmt = $conn->prepare("SELECT ci.*, cc.name as category_name 
+                                              FROM claim_items ci 
+                                              LEFT JOIN claim_categories cc ON ci.category_id = cc.id 
+                                              WHERE ci.claim_id = ?");
+                    $itemsStmt->execute([$claimId]);
+                    $claimItems = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    // Prepare email recipients
+                    $recipients = [];
+                    foreach ($approvers as $approver) {
+                        if (!empty($approver['email'])) {
+                            $recipients[] = $approver['email'];
+                            error_log("Added recipient: {$approver['email']} (Approver Role: {$approver['approver_role']})");
+                        } else {
+                            error_log("Approver without email: " . json_encode($approver));
+                        }
+                    }
+                    error_log("Final recipients list: " . json_encode($recipients));
+                    
+                    // Get the creator's user details
+                    $creatorUser = getUserDetailsById($userId);
+                    if ($creatorUser) {
+                        $claim['created_by_name'] = $creatorUser['first_name'] . ' ' . $creatorUser['last_name'];
+                        $claim['created_by_email'] = $creatorUser['email'];
+                    }
+                    
+                    // Add category approver information to claim data for email template
+                    $claim['category_approver'] = $approverRole;
+                    
+                    // Send notification email
+                    if (!empty($recipients)) {
+                        error_log("Sending email notification for claim ID: $claimId to recipients: " . json_encode($recipients));
+                        $emailResult = sendClaimNotificationEmail($claim, $claimItems, $recipients, true, true);
+                        error_log("Email notification result: " . ($emailResult ? 'Success' : 'Failed'));
+                    } else {
+                        error_log("No recipients found for claim ID: $claimId with approver role: $approverRole");
+                    }
+                }
+            } catch (Exception $e) {
+                error_log("Error processing notification for claim ID $claimId: " . $e->getMessage());
+            }
+        }
+        
     } catch (PDOException $e) {
         // Log error
         error_log("Error creating claim: " . $e->getMessage());
@@ -677,8 +771,8 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                             // Get current date
                             $currentDate = new DateTime();
                             
-                            // Check if claim is resolved (approved or rejected)
-                            $isResolved = in_array($claim['status'], ['approved', 'rejected']);
+                            // Check if claim is resolved (rejected or resolved status)
+                            $isResolved = in_array($claim['status'], ['rejected', 'resolved']);
                             
                             if ($isResolved) {
                                 echo '<span class="badge bg-success">Resolved</span>';
@@ -709,15 +803,29 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                                     'new' => 'info',
                                     'in_progress' => 'primary',
                                     'on_hold' => 'warning',
-                                    'approved' => 'success',
+                                    'approved' => 'primary',
                                     'rejected' => 'danger',
+                                    'resolved' => 'success',
                                     default => 'secondary'
                                 };
                             ?>">
-                                <?php echo ucfirst(str_replace('_', ' ', $claim['status'])); ?>
+                                <?php 
+                                if ($claim['status'] === 'in_progress' || $claim['status'] === 'approved') {
+                                    echo 'In Progress';
+                                } else if ($claim['status'] === 'resolved') {
+                                    echo 'Resolved';
+                                } else {
+                                    echo ucfirst(str_replace('_', ' ', $claim['status']));
+                                }
+                                ?>
                             </span>
                         </td>
-                        <td><?php echo date('M d, Y h:i A', strtotime($claim['created_at'])); ?></td>
+                        <td>
+                            <div class="small">
+                                <div><?php echo date('M d, Y', strtotime($claim['created_at'])); ?></div>
+                                <div class="text-muted"><?php echo date('h:i A', strtotime($claim['created_at'])); ?></div>
+                            </div>
+                        </td>
                         <td>
                             <?php if ($claim['assigned_to']): ?>
                                 <?php
@@ -740,7 +848,15 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                                     <i class="fas fa-edit"></i>
                                 </a>
                                 <?php if (isAdmin()): ?>
-                                <button type="button" class="btn btn-outline-success quick-assign-claim" 
+                                <?php if ($claim['status'] === 'in_progress' || $claim['status'] === 'approved'): ?>
+                                <button type="button" class="btn btn-outline-success mark-resolved-btn" 
+                                        data-id="<?php echo $claim['id']; ?>"
+                                        data-status="<?php echo $claim['status']; ?>"
+                                        title="Mark as Resolved">
+                                    <i class="fas fa-check-circle"></i>
+                                </button>
+                                <?php endif; ?>
+                                <button type="button" class="btn btn-outline-info quick-assign-claim" 
                                         data-id="<?php echo $claim['id']; ?>"
                                         data-claim-number="<?php echo !empty($claim['claim_number']) ? htmlspecialchars($claim['claim_number']) : ''; ?>"
                                         data-order="<?php echo htmlspecialchars($claim['order_id']); ?>"
@@ -761,6 +877,34 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Mark Resolved Modal -->
+<div class="modal fade" id="markResolvedModal" tabindex="-1" aria-labelledby="markResolvedModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="markResolvedModalLabel">Mark Claim as Resolved</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="markResolvedForm">
+                    <input type="hidden" id="resolved_claim_id" name="claim_id">
+                    <input type="hidden" id="resolved_current_status" name="current_status">
+                    <div class="mb-3">
+                        <label for="resolution_note" class="form-label">Resolution Note</label>
+                        <textarea class="form-control" id="resolution_note" name="note" rows="4" required placeholder="Please provide details about the resolution..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmResolveBtn">
+                    <i class="fas fa-check-circle me-1"></i> Mark as Resolved
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1372,6 +1516,70 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
 
 <script>
     $(document).ready(function() {
+        // Mark as Resolved button click handler
+        $(document).on('click', '.mark-resolved-btn', function() {
+            const claimId = $(this).data('id');
+            const currentStatus = $(this).data('status');
+            
+            // Set values in the modal form
+            $('#resolved_claim_id').val(claimId);
+            $('#resolved_current_status').val(currentStatus);
+            
+            // Show the modal
+            $('#markResolvedModal').modal('show');
+        });
+        
+        // Confirm resolve button click handler
+        $('#confirmResolveBtn').on('click', function() {
+            const form = $('#markResolvedForm');
+            const claimId = $('#resolved_claim_id').val();
+            const note = $('#resolution_note').val();
+            
+            // Validate form
+            if (!note.trim()) {
+                alert('Please provide a resolution note.');
+                return;
+            }
+            
+            // Disable button and show loading state
+            const btn = $(this);
+            const originalText = btn.html();
+            btn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...');
+            btn.prop('disabled', true);
+            
+            // Send AJAX request to mark claim as resolved
+            $.ajax({
+                url: 'ajax/mark_claim_resolved.php',
+                type: 'POST',
+                data: form.serialize(),
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        // Show success message
+                        alert(response.message || 'Claim marked as resolved successfully.');
+                        
+                        // Reload the page to reflect changes
+                        location.reload();
+                    } else {
+                        // Show error message
+                        alert(response.message || 'An error occurred while marking the claim as resolved.');
+                        
+                        // Reset button state
+                        btn.html(originalText);
+                        btn.prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    // Show error message
+                    alert('An error occurred while marking the claim as resolved. Please try again.');
+                    
+                    // Reset button state
+                    btn.html(originalText);
+                    btn.prop('disabled', false);
+                }
+            });
+        });
+        
         // Initialize DataTable for claims with proper sorting
         if ($('#claimsTable').length > 0) {
             // Destroy existing DataTable if it exists
@@ -1392,9 +1600,19 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
                     infoFiltered: "(filtered from _MAX_ total entries)"
                 },
                 stateSave: false, // Disable state saving to ensure default sorting is always applied
+                autoWidth: false, // Disable auto-width to allow manual column width control
+                scrollX: false, // Disable horizontal scrolling
                 "columnDefs": [
                     { "orderable": false, "targets": -1 }, // Disable sorting on action column
-                    { "type": "num", "targets": 0 }  // Ensure numeric sorting for claim ID column
+                    { "type": "num", "targets": 0 },  // Ensure numeric sorting for claim ID column
+                    { "width": "10%", "targets": 0 }, // Claim #
+                    { "width": "10%", "targets": 1 }, // Order ID
+                    { "width": "10%", "targets": 2 }, // Products & Categories
+                    { "width": "15%", "targets": 3 }, // SLA
+                    { "width": "15%", "targets": 4 }, // Status
+                    { "width": "15%", "targets": 5 }, // Created At
+                    { "width": "10%", "targets": 6 }, // Assignment
+                    { "width": "15%", "targets": 7 }  // Actions (last column)
                 ],
                 "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]]
             });

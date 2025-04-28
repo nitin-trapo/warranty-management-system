@@ -187,8 +187,8 @@ try {
                             // Get current date
                             $currentDate = new DateTime();
                             
-                            // Check if claim is resolved (approved or rejected)
-                            $isResolved = in_array($claim['status'], ['approved', 'rejected']);
+                            // Check if claim is resolved (rejected or resolved status)
+                            $isResolved = in_array($claim['status'], ['rejected', 'resolved']);
                             
                             if ($isResolved) {
                                 echo '<span class="badge bg-success">Resolved</span>';

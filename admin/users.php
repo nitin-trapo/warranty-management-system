@@ -38,6 +38,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'add_user') {
         $lastName = trim($_POST['last_name']);
         $role = $_POST['role'];
         $status = $_POST['status'];
+        $approverRole = isset($_POST['approver_role']) ? $_POST['approver_role'] : '';
         
         // Validate required fields
         if (empty($username) || empty($email) || empty($firstName) || empty($lastName)) {

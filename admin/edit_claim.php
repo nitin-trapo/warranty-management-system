@@ -26,6 +26,9 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 
 $claimId = (int)$_GET['id'];
 
+// Include auth helper
+require_once '../includes/auth_helper.php';
+
 // Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_claim') {
     try {
@@ -133,10 +136,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $orderDate
         ];
         
-        // Only update status if it has changed
+        // Only update status if it has changed and user is admin
         if ($status !== $claim['status']) {
-            $updateQuery .= ", status = ?";
-            $params[] = $status;
+            if (isAdmin()) {
+                $updateQuery .= ", status = ?";
+                $params[] = $status;
+            } else {
+                // Log attempt by non-admin to change status
+                error_log("Non-admin user (ID: {$_SESSION['user_id']}) attempted to change claim status from {$claim['status']} to {$status}");
+                
+                // Use original status instead
+                $status = $claim['status'];
+            }
         }
         
         $updateQuery .= " WHERE id = ?";
@@ -273,21 +284,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // Commit transaction
         $conn->commit();
         
-        // Add status change note if status was changed
-        if ($status !== $claim['status']) {
+        // Add status change note if status was changed and a note was provided
+        if ($status !== $claim['status'] && !empty($statusNote)) {
             // Get current user ID
             $userId = $_SESSION['user_id'] ?? 1; // Default to admin if not set
             
-            // Create note text
-            $noteText = !empty($statusNote) 
-                ? $statusNote 
-                : "Status changed from '{$claim['status']}' to '{$status}'.";
+            // Create note text with status change information
+            $noteText = $statusNote . "\n\nStatus changed from '" . ucfirst(str_replace('_', ' ', $claim['status'])) . "' to '" . ucfirst(str_replace('_', ' ', $status)) . "'.";
             
-            // Insert note with new SKUs in separate column
-            $insertNoteQuery = "INSERT INTO claim_notes (claim_id, note, new_skus, created_by, created_at) 
-                               VALUES (?, ?, ?, ?, NOW())";
+            // Insert note
+            $insertNoteQuery = "INSERT INTO claim_notes (claim_id, note, created_by, created_at) 
+                               VALUES (?, ?, ?, NOW())";
             $stmt = $conn->prepare($insertNoteQuery);
-            $stmt->execute([$claimId, $noteText, $newSkus, $userId]);
+            $stmt->execute([$claimId, $noteText, $userId]);
         }
         
         // Set success message
@@ -657,24 +666,52 @@ foreach ($mediaResults as $mediaItem) {
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="status" class="form-label">Status</label>
+                            <?php if (isAdmin()): ?>
+                            <!-- Status dropdown for admins -->
                             <select class="form-select" id="status" name="status" required>
                                 <option value="new" <?php echo $claim['status'] === 'new' ? 'selected' : ''; ?>>New</option>
-                                <option value="in_progress" <?php echo $claim['status'] === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                                <option value="in_progress" <?php echo ($claim['status'] === 'in_progress' || $claim['status'] === 'approved') ? 'selected' : ''; ?>>In Progress/Approved</option>
                                 <option value="on_hold" <?php echo $claim['status'] === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
-                                <option value="approved" <?php echo $claim['status'] === 'approved' ? 'selected' : ''; ?>>Approved</option>
+                                <option value="resolved" <?php echo $claim['status'] === 'resolved' ? 'selected' : ''; ?>>Resolved</option>
                                 <option value="rejected" <?php echo $claim['status'] === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
                             </select>
+                            <?php else: ?>
+                            <!-- Read-only status for CS agents -->
+                            <div class="form-control bg-light">
+                                <span class="badge bg-<?php 
+                                    echo match($claim['status']) {
+                                        'new' => 'info',
+                                        'in_progress' => 'primary',
+                                        'on_hold' => 'warning',
+                                        'approved' => 'primary',
+                                        'resolved' => 'success',
+                                        'rejected' => 'danger',
+                                        default => 'secondary'
+                                    };
+                                ?>">
+                                    <?php 
+                                    if ($claim['status'] === 'in_progress' || $claim['status'] === 'approved') {
+                                        echo 'In Progress';
+                                    } else if ($claim['status'] === 'resolved') {
+                                        echo 'Resolved';
+                                    } else {
+                                        echo ucfirst(str_replace('_', ' ', $claim['status']));
+                                    }
+                                    ?>
+                                </span>
+                            </div>
+                            <!-- Hidden field to maintain the current status -->
+                            <input type="hidden" name="status" value="<?php echo htmlspecialchars($claim['status']); ?>">
+                            <?php endif; ?>
                         </div>
-                        <div class="col-md-6 mb-3" id="new_sku_container" style="display: <?php echo $claim['status'] === 'approved' ? 'block' : 'none'; ?>;">
-                            <label for="new_skus" class="form-label">New SKUs (comma separated)</label>
-                            <input type="text" class="form-control" id="new_skus" name="new_skus" placeholder="Enter new SKUs separated by commas">
-                            <div class="form-text">For replacement items, enter the new SKUs separated by commas.</div>
-                        </div>
+
+                        <?php if (isAdmin()): ?>
                         <div class="col-md-6">
                             <label for="status_note" class="form-label">Status Note (Optional)</label>
                             <textarea class="form-control" id="status_note" name="status_note" rows="3" placeholder="Add a note about this status change..."></textarea>
                             <div class="form-text">If provided, this note will be added to the claim history.</div>
                         </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -695,7 +732,6 @@ foreach ($mediaResults as $mediaItem) {
                                 <tr>
                                     <th>#</th>
                                     <th>Note</th>
-                                    <th>New SKUs</th>
                                     <th>Created By</th>
                                     <th>Created At</th>
                                 </tr>
@@ -705,7 +741,6 @@ foreach ($mediaResults as $mediaItem) {
                                 <tr>
                                     <td><?php echo $index + 1; ?></td>
                                     <td><?php echo nl2br(htmlspecialchars($note['note'])); ?></td>
-                                    <td><?php echo htmlspecialchars($note['new_skus'] ?? 'N/A'); ?></td>
                                     <td><?php echo htmlspecialchars($note['created_by_name'] ?? 'System'); ?></td>
                                     <td><?php echo date('M d, Y h:i A', strtotime($note['created_at'])); ?></td>
                                 </tr>
@@ -779,11 +814,7 @@ foreach ($mediaResults as $mediaItem) {
                         <label for="note_text" class="form-label">Note</label>
                         <textarea class="form-control" id="note_text" name="note" rows="4" required></textarea>
                     </div>
-                    <div class="mb-3">
-                        <label for="new_skus_note" class="form-label">New SKUs (Optional)</label>
-                        <input type="text" class="form-control" id="new_skus_note" name="new_skus" placeholder="Enter new SKUs separated by commas">
-                        <div class="form-text">For replacement items, enter the new SKUs separated by commas.</div>
-                    </div>
+
                 </form>
             </div>
             <div class="modal-footer">
@@ -802,6 +833,12 @@ foreach ($mediaResults as $mediaItem) {
 
 <script>
     $(document).ready(function() {
+        // Status change handler
+        $('#status').on('change', function() {
+            // Status change event handler (previously controlled New SKUs visibility)
+            // Now just a placeholder for any future status-related functionality
+        });
+        
         // Photo modal event handler
         $('#photoModal').on('show.bs.modal', function (event) {
             const button = $(event.relatedTarget);

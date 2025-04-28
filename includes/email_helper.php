@@ -212,11 +212,19 @@ function verifyOtp($userId, $otp, $purpose = 'login') {
  */
 function sendClaimNotificationEmail($claim, $claimItems, $recipients = [], $notifyCreator = true, $notifyStaffCreator = true) {
     try {
-        // Debug log
-        logEmail("Starting claim notification email process for claim ID: " . ($claim['id'] ?? 'unknown'));
+        // Enhanced debug logging
+        logEmail("==== STARTING EMAIL NOTIFICATION PROCESS ====");
+        logEmail("Claim ID: " . ($claim['id'] ?? 'unknown'));
+        logEmail("Claim Number: " . ($claim['claim_number'] ?? 'unknown'));
+        logEmail("Category Approver: " . ($claim['category_approver'] ?? 'None'));
         logEmail("Recipients: " . json_encode($recipients));
+        logEmail("Recipient Count: " . count($recipients));
         logEmail("Notify creator: " . ($notifyCreator ? 'Yes' : 'No'));
         logEmail("Notify staff creator: " . ($notifyStaffCreator ? 'Yes' : 'No'));
+        
+        // Log claim data for debugging
+        logEmail("Claim Data: " . json_encode($claim));
+        logEmail("Claim Items: " . json_encode($claimItems));
         
         // Get company name from email config
         $companyName = MAIL_FROM_NAME;
@@ -265,21 +273,28 @@ function sendClaimNotificationEmail($claim, $claimItems, $recipients = [], $noti
         
         // Send to regular recipients
         if (!empty($recipients)) {
+            logEmail("==== PROCESSING APPROVER RECIPIENTS ====");
             // Reset recipients
             $mail->clearAddresses();
+            logEmail("Cleared previous email addresses");
             
             // Add recipients
+            $validRecipientCount = 0;
             foreach ($recipients as $recipient) {
+                logEmail("Processing recipient: $recipient");
                 if (filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
                     $mail->addAddress($recipient);
-                    logEmail("Added recipient: $recipient");
+                    logEmail("Added valid recipient: $recipient");
+                    $validRecipientCount++;
                 } else {
-                    logEmail("Invalid recipient email: $recipient");
+                    logEmail("ERROR: Invalid recipient email format: $recipient");
                 }
             }
             
+            logEmail("Total valid recipients added: $validRecipientCount");
+            
             if (count($mail->getToAddresses()) === 0) {
-                logEmail("No valid recipients for admin notification");
+                logEmail("ERROR: No valid recipients for approver notification");
             } else {
                 // Generate email content for admin/staff recipients
                 $templateVars['isCustomer'] = false;
