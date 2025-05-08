@@ -466,7 +466,13 @@ try {
                             <?php foreach ($notes as $index => $note): ?>
                             <tr>
                                 <td><?php echo $index + 1; ?></td>
-                                <td><?php echo nl2br(htmlspecialchars($note['note'])); ?></td>
+                                <td><?php 
+                                    // Process the note to highlight tagged users
+                                    $noteText = htmlspecialchars($note['note']);
+                                    // Replace @username with highlighted version
+                                    $noteText = preg_replace('/@([a-zA-Z0-9._]+)/', '<span class="badge bg-info text-dark">@$1</span>', $noteText);
+                                    echo nl2br($noteText); 
+                                ?></td>
                                 <td><?php echo !empty($note['new_skus']) ? htmlspecialchars($note['new_skus']) : '-'; ?></td>
                                 <td><?php echo htmlspecialchars($note['created_by_name'] ?? 'System'); ?></td>
                                 <td><?php echo date('M d, Y h:i A', strtotime($note['created_at'])); ?></td>
@@ -482,14 +488,6 @@ try {
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
                     <h6 class="border-bottom pb-2 mb-3">Claim Notes</h6>
-                    <div>
-                        <button type="button" class="btn btn-sm btn-info me-2" data-bs-toggle="modal" data-bs-target="#updateStatusModal">
-                            <i class="fas fa-sync-alt me-1"></i> Update Status
-                        </button>
-                        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addNoteModal">
-                            <i class="fas fa-plus me-1"></i> Add Note
-                        </button>
-                    </div>
                 </div>
                 <div class="alert alert-info">
                     No notes have been added to this claim yet.

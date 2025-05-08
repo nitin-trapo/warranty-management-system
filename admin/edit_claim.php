@@ -670,7 +670,7 @@ foreach ($mediaResults as $mediaItem) {
                             <!-- Status dropdown for admins -->
                             <select class="form-select" id="status" name="status" required>
                                 <option value="new" <?php echo $claim['status'] === 'new' ? 'selected' : ''; ?>>New</option>
-                                <option value="in_progress" <?php echo ($claim['status'] === 'in_progress' || $claim['status'] === 'approved') ? 'selected' : ''; ?>>In Progress/Approved</option>
+                                <option value="in_progress" <?php echo ($claim['status'] === 'in_progress' || $claim['status'] === 'approved') ? 'selected' : ''; ?>>Approved-In Progress</option>
                                 <option value="on_hold" <?php echo $claim['status'] === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
                                 <option value="resolved" <?php echo $claim['status'] === 'resolved' ? 'selected' : ''; ?>>Resolved</option>
                                 <option value="rejected" <?php echo $claim['status'] === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
@@ -856,6 +856,21 @@ foreach ($mediaResults as $mediaItem) {
 
 <script>
     $(document).ready(function() {
+        // Direct handler for Add Note button loading state
+        $('.add-note-btn').on('click', function() {
+            const $btn = $(this);
+            const originalText = $btn.html();
+            $btn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...');
+            $btn.prop('disabled', true);
+            
+            // Reset the button after 10 seconds in case of error
+            setTimeout(function() {
+                if ($btn.prop('disabled')) {
+                    $btn.html(originalText);
+                    $btn.prop('disabled', false);
+                }
+            }, 10000);
+        });
         // Status change handler
         $('#status').on('change', function() {
             // Status change event handler (previously controlled New SKUs visibility)

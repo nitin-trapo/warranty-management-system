@@ -120,7 +120,7 @@ $(document).ready(function() {
         const modal = $('#addNoteModal');
         
         // Show loading state
-        const submitBtn = modal.find('button[type="submit"]');
+        const submitBtn = modal.find('.add-note-btn');
         const originalBtnText = submitBtn.html();
         submitBtn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...');
         submitBtn.prop('disabled', true);

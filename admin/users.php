@@ -356,7 +356,7 @@ $users = $stmt->fetchAll();
                         <select class="form-select" id="add_approver_role" name="approver_role">
                             <option value="">-- None --</option>
                             <option value="Production coordinator">Production coordinator</option>
-                            <option value="Stan">Stan</option>
+                            <option value="Product Admin">Product Admin</option>
                             <option value="Finance">Finance</option>
                         </select>
                     </div>
@@ -433,7 +433,7 @@ $users = $stmt->fetchAll();
                         <select class="form-select" id="edit_approver_role" name="approver_role">
                             <option value="">-- None --</option>
                             <option value="Production coordinator">Production coordinator</option>
-                            <option value="Stan">Stan</option>
+                            <option value="Product Admin">Product Admin</option>
                             <option value="Finance">Finance</option>
                         </select>
                     </div>
