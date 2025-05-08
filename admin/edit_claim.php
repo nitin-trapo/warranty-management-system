@@ -79,6 +79,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $errors[] = "Invalid email format.";
         }
         
+        // Check if status is 'resolved' and status note is empty
+        if ($status === 'resolved' && empty($statusNote)) {
+            $errors[] = "Status Note is required when status is set to Resolved.";
+        } else if ($status !== $claim['status']) {
+            // If status has changed, ensure we have a note
+            if (empty($statusNote)) {
+                // If no note was provided, create a default note
+                $oldStatusLabel = ucfirst(str_replace('_', ' ', $claim['status']));
+                $newStatusLabel = ucfirst(str_replace('_', ' ', $status));
+                $statusNote = "Status changed from {$oldStatusLabel} to {$newStatusLabel}.";
+            }
+        }
+        
         if (empty($orderDate)) {
             $errors[] = "Order date is required.";
         }
@@ -127,27 +140,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         customer_email = ?,
                         customer_phone = ?,
                         delivery_date = ?,
+                        status = ?,
                         updated_at = NOW()";
         
         $params = [
             $customerName,
             $customerEmail,
             $customerPhone,
-            $orderDate
+            $orderDate,
+            $status
         ];
         
-        // Only update status if it has changed and user is admin
-        if ($status !== $claim['status']) {
-            if (isAdmin()) {
-                $updateQuery .= ", status = ?";
-                $params[] = $status;
-            } else {
-                // Log attempt by non-admin to change status
-                error_log("Non-admin user (ID: {$_SESSION['user_id']}) attempted to change claim status from {$claim['status']} to {$status}");
-                
-                // Use original status instead
-                $status = $claim['status'];
-            }
+        // Add new SKUs if provided
+        if (!empty($newSkus)) {
+            $updateQuery .= ", new_skus = ?";
+            $params[] = $newSkus;
         }
         
         $updateQuery .= " WHERE id = ?";
@@ -155,6 +162,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         
         $stmt = $conn->prepare($updateQuery);
         $stmt->execute($params);
+        
+        // Note: The status change note will be added later in the code
         
         // Update claim items
         foreach ($itemIds as $index => $itemId) {
@@ -284,19 +293,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // Commit transaction
         $conn->commit();
         
-        // Add status change note if status was changed and a note was provided
-        if ($status !== $claim['status'] && !empty($statusNote)) {
+        // Add status change note if status was changed
+        if ($status !== $claim['status']) {
             // Get current user ID
             $userId = $_SESSION['user_id'] ?? 1; // Default to admin if not set
             
-            // Create note text with status change information
-            $noteText = $statusNote . "\n\nStatus changed from '" . ucfirst(str_replace('_', ' ', $claim['status'])) . "' to '" . ucfirst(str_replace('_', ' ', $status)) . "'.";
+            // Prepare the note text
+            $noteText = '';
             
-            // Insert note
-            $insertNoteQuery = "INSERT INTO claim_notes (claim_id, note, created_by, created_at) 
-                               VALUES (?, ?, ?, NOW())";
-            $stmt = $conn->prepare($insertNoteQuery);
-            $stmt->execute([$claimId, $noteText, $userId]);
+            // If status note is empty, create a default note
+            if (empty($statusNote)) {
+                $oldStatusLabel = ucfirst(str_replace('_', ' ', $claim['status']));
+                $newStatusLabel = ucfirst(str_replace('_', ' ', $status));
+                $noteText = "Status changed from {$oldStatusLabel} to {$newStatusLabel}.";
+            } else {
+                // If note is provided, check if it already contains status change information
+                if (strpos($statusNote, "Status changed from") === false) {
+                    // If not, use the provided note and append status change information
+                    $noteText = $statusNote;
+                    $noteText .= "\n\nStatus changed from '" . ucfirst(str_replace('_', ' ', $claim['status'])) . "' to '" . ucfirst(str_replace('_', ' ', $status)) . "'.";
+                } else {
+                    // If it already contains status info, use as is
+                    $noteText = $statusNote;
+                }
+            }
+            
+            // Debug the note text
+            error_log("Status change note text: " . $noteText);
+            
+            // Always add the status change note - don't check for recent notes
+            // This ensures the note is added even if there were other recent notes
+            {
+                // Insert note
+                $insertNoteQuery = "INSERT INTO claim_notes (claim_id, note, created_by, created_at) 
+                                   VALUES (?, ?, ?, NOW())";
+                $stmt = $conn->prepare($insertNoteQuery);
+                $stmt->execute([$claimId, $noteText, $userId]);
+            }
         }
         
         // Set success message
@@ -724,9 +757,9 @@ foreach ($mediaResults as $mediaItem) {
 
                         <?php if (isAdmin()): ?>
                         <div class="col-md-6">
-                            <label for="status_note" class="form-label">Status Note (Optional)</label>
-                            <textarea class="form-control" id="status_note" name="status_note" rows="3" placeholder="Add a note about this status change..."></textarea>
-                            <div class="form-text">If provided, this note will be added to the claim history.</div>
+                            <label for="status_note" class="form-label">Status Note <?php echo $claim['status'] === 'resolved' ? '(Required)' : '(Optional)'; ?></label>
+                            <textarea class="form-control <?php echo $claim['status'] === 'resolved' ? 'is-required' : ''; ?>" id="status_note" name="status_note" rows="3" placeholder="Add a note about this status change..." <?php echo $claim['status'] === 'resolved' ? 'required' : ''; ?>></textarea>
+                            <div class="form-text <?php echo $claim['status'] === 'resolved' ? 'text-danger' : ''; ?>"><?php echo $claim['status'] === 'resolved' ? 'Please provide a note explaining the resolution.' : 'If provided, this note will be added to the claim history.'; ?></div>
                         </div>
                         <?php endif; ?>
                     </div>
@@ -877,10 +910,41 @@ foreach ($mediaResults as $mediaItem) {
 <script>
     $(document).ready(function() {
         // Removed direct handler for Add Note button - now handled in claim-notes.js
+        
+        // Check form submission
+        $('#edit-claim-form').on('submit', function(e) {
+            // Check if status is resolved and note is empty
+            const status = $('#status').val();
+            const statusNote = $('#status_note').val().trim();
+            
+            if (status === 'resolved' && statusNote === '') {
+                e.preventDefault();
+                alert('Status Note is required when status is set to Resolved.');
+                $('#status_note').focus();
+                return false;
+            }
+        });
         // Status change handler
         $('#status').on('change', function() {
-            // Status change event handler (previously controlled New SKUs visibility)
-            // Now just a placeholder for any future status-related functionality
+            // Make status_note required when status is changed to Resolved
+            const selectedStatus = $(this).val();
+            const statusNoteField = $('#status_note');
+            
+            if (selectedStatus === 'resolved') {
+                // Make the status note required
+                statusNoteField.attr('required', true);
+                statusNoteField.addClass('is-required');
+                statusNoteField.siblings('label').text('Status Note (Required)');
+                statusNoteField.siblings('.form-text').text('Please provide a note explaining the resolution.');
+                statusNoteField.siblings('.form-text').addClass('text-danger');
+            } else {
+                // Make the status note optional
+                statusNoteField.attr('required', false);
+                statusNoteField.removeClass('is-required');
+                statusNoteField.siblings('label').text('Status Note (Optional)');
+                statusNoteField.siblings('.form-text').text('If provided, this note will be added to the claim history.');
+                statusNoteField.siblings('.form-text').removeClass('text-danger');
+            }
         });
         
         // Photo modal event handler

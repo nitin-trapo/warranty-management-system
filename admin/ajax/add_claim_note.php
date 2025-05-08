@@ -184,14 +184,17 @@ try {
         }
     }
     
-    // Return success response with force_reload flag
+    // Return success response with note data and force_reload flag
     echo json_encode([
         'success' => true,
-        'message' => 'Note added successfully.' . 
-                    (!empty($taggedUsers) ? ' Tagged users have been notified.' : ''),
+        'message' => 'Note added successfully.' . (!empty($taggedUsers) ? ' Tagged users have been notified.' : ''),
         'note' => $noteData,
         'tagged_users' => $taggedUsers,
-        'force_reload' => true // Add this flag to force a page reload
+        'force_reload' => true,
+        'debug_info' => [
+            'note_id' => $noteId,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]
     ]);
     
 } catch (PDOException $e) {

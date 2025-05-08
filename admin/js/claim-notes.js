@@ -140,6 +140,11 @@ $(document).ready(function() {
                     return;
                 }
                 
+                console.log('AJAX Response:', response);
+                
+                // Reset submission flag
+                isSubmittingNote = false;
+                
                 // Extensive debugging of the response
                 console.log('AJAX SUCCESS RESPONSE:', response);
                 if (response.note && response.note.formatted_note) {
@@ -161,8 +166,18 @@ $(document).ready(function() {
                     
                     // FORCE PAGE RELOAD: This is the most reliable way to ensure proper formatting
                     setTimeout(function() {
-                        // Use the most direct approach possible
-                        window.location.reload();
+                        // Get the current URL and claim ID
+                        var claimId = $('#addNoteForm input[name="claim_id"]').val();
+                        var currentUrl = window.location.pathname;
+                        var timestamp = new Date().getTime();
+                        
+                        // Construct the URL with the claim ID and a timestamp to prevent caching
+                        var reloadUrl = currentUrl + '?id=' + claimId + '&t=' + timestamp;
+                        
+                        console.log('Reloading page with URL:', reloadUrl);
+                        
+                        // Use location.href for a complete page reload
+                        window.location.href = reloadUrl;
                     }, 1000); // Short delay to show the success message
                 } else {
                     // Show error message
