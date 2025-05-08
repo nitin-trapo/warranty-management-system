@@ -68,7 +68,7 @@ try {
         'new' => 0,
         'in_progress' => 0,
         'on_hold' => 0,
-        'approved' => 0,
+        'resolved' => 0,
         'rejected' => 0
     ];
     
@@ -124,8 +124,8 @@ try {
     
     // Claims resolved today - using a query that works with the actual database structure
     $resolvedTodayQuery = "SELECT COUNT(*) as total FROM claims 
-                          WHERE DATE(updated_at) = CURDATE() 
-                          AND status IN ('approved', 'rejected')";
+                           WHERE DATE(updated_at) = CURDATE() 
+                           AND status IN ('approved', 'rejected', 'resolved')";
     $stmt = $conn->query($resolvedTodayQuery);
     $resolvedToday = $stmt->fetch()['total'] ?? 0;
         
@@ -325,11 +325,11 @@ try {
                             
                             <div class="mb-2">
                                 <div class="d-flex justify-content-between mb-1 small">
-                                    <span>Approved</span>
-                                    <span class="fw-bold"><?php echo $statusCounts['approved']; ?></span>
+                                    <span>Resolved</span>
+                                    <span class="fw-bold"><?php echo $statusCounts['resolved']; ?></span>
                                 </div>
                                 <div class="progress" style="height: 6px;">
-                                    <div class="progress-bar bg-success" style="width: <?php echo $totalClaims > 0 ? ($statusCounts['approved'] / $totalClaims * 100) : 0; ?>%"></div>
+                                    <div class="progress-bar bg-success" style="width: <?php echo $totalClaims > 0 ? ($statusCounts['resolved'] / $totalClaims * 100) : 0; ?>%"></div>
                                 </div>
                             </div>
                             
@@ -501,21 +501,21 @@ document.addEventListener('DOMContentLoaded', function() {
     var claimsChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: ['New', 'In Progress', 'On Hold', 'Approved', 'Rejected'],
+            labels: ['New', 'In Progress', 'On Hold', 'Resolved', 'Rejected'],
             datasets: [{
                 label: 'Claims by Status',
                 data: [
                     <?php echo $statusCounts['new']; ?>,
                     <?php echo $statusCounts['in_progress']; ?>,
                     <?php echo $statusCounts['on_hold']; ?>,
-                    <?php echo $statusCounts['approved']; ?>,
+                    <?php echo $statusCounts['resolved']; ?>,
                     <?php echo $statusCounts['rejected']; ?>
                 ],
                 backgroundColor: [
                     '#36a2eb', // info (new)
                     '#4e73df', // primary (in progress)
                     '#f6c23e', // warning (on hold)
-                    '#1cc88a', // success (approved)
+                    '#1cc88a', // success (resolved)
                     '#e74a3b'  // danger (rejected)
                 ],
                 borderWidth: 1
