@@ -232,8 +232,50 @@ function sendClaimNotificationEmail($claim, $claimItems, $recipients = [], $noti
         logEmail("==== STARTING EMAIL NOTIFICATION PROCESS ====");
         logEmail("Claim ID: " . ($claim['id'] ?? 'unknown'));
         logEmail("Claim Number: " . ($claim['claim_number'] ?? 'unknown'));
-        logEmail("Category Approver: " . ($claim['category_approver'] ?? 'None'));
-        logEmail("Recipients: " . json_encode($recipients));
+        
+        // Get category approver role for each claim item
+        $categoryApprovers = [];
+        $categoryApproverEmails = [];
+        
+        foreach ($claimItems as $item) {
+            if (!empty($item['category_id'])) {
+                try {
+                    require_once __DIR__ . '/../config/database.php';
+                    $conn = getDbConnection();
+                    
+                    // Get approver role for this category
+                    $stmt = $conn->prepare("SELECT approver FROM claim_categories WHERE id = ?");
+                    $stmt->execute([$item['category_id']]);
+                    $approverRole = $stmt->fetchColumn();
+                    
+                    if (!empty($approverRole) && !in_array($approverRole, $categoryApprovers)) {
+                        $categoryApprovers[] = $approverRole;
+                        
+                        // Get emails for this approver role
+                        $approverEmails = getApproverEmailsByRole($approverRole);
+                        foreach ($approverEmails as $email) {
+                            if (!in_array($email, $categoryApproverEmails)) {
+                                $categoryApproverEmails[] = $email;
+                            }
+                        }
+                    }
+                } catch (Exception $e) {
+                    logEmail("Error getting category approver: " . $e->getMessage());
+                }
+            }
+        }
+        
+        logEmail("Category Approver Roles: " . implode(", ", $categoryApprovers));
+        logEmail("Category Approver Emails: " . implode(", ", $categoryApproverEmails));
+        
+        // Add category approver emails to recipients
+        foreach ($categoryApproverEmails as $email) {
+            if (!in_array($email, $recipients)) {
+                $recipients[] = $email;
+            }
+        }
+        
+        logEmail("Recipients (including approvers): " . json_encode($recipients));
         logEmail("Recipient Count: " . count($recipients));
         logEmail("Notify creator: " . ($notifyCreator ? 'Yes' : 'No'));
         logEmail("Notify staff creator: " . ($notifyStaffCreator ? 'Yes' : 'No'));
@@ -695,5 +737,41 @@ function isCreatorNotificationEnabled() {
  * @return bool True if enabled, false otherwise
  */
 function isStaffCreatorNotificationEnabled() {
-    return getSystemSetting('notify_staff_creator') === '1';
+    return getSystemSetting('notify_staff_creator', '1') === '1';
+}
+
+/**
+ * Get approver emails based on approver role
+ * 
+ * @param string $approverRole The approver role to find emails for
+ * @return array Array of email addresses for users with the specified approver role
+ */
+function getApproverEmailsByRole($approverRole) {
+    if (empty($approverRole)) {
+        logEmail("No approver role specified");
+        return [];
+    }
+    
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        $conn = getDbConnection();
+        
+        // Get all users with the specified approver role
+        $stmt = $conn->prepare("SELECT email FROM users WHERE approver_role = :approver_role AND status = 'active'");
+        $stmt->bindParam(':approver_role', $approverRole);
+        $stmt->execute();
+        
+        $emails = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            if (!empty($row['email']) && filter_var($row['email'], FILTER_VALIDATE_EMAIL)) {
+                $emails[] = $row['email'];
+            }
+        }
+        
+        logEmail("Found " . count($emails) . " approver emails for role: " . $approverRole);
+        return $emails;
+    } catch (PDOException $e) {
+        logEmail("Error getting approver emails: " . $e->getMessage());
+        return [];
+    }
 }

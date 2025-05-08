@@ -307,15 +307,20 @@ try {
         
         error_log("Retrieved claim data: " . json_encode(array_intersect_key($claimData, array_flip(['id', 'order_id', 'claim_number', 'customer_email', 'created_by_name', 'created_by_email']))));
         
-        // Get claim items with category names
+        // Get claim items with category names and approver information
         $stmt = $conn->prepare("
-            SELECT ci.*, cc.name as category_name
+            SELECT ci.*, cc.name as category_name, cc.approver as category_approver
             FROM claim_items ci
             LEFT JOIN claim_categories cc ON ci.category_id = cc.id
             WHERE ci.claim_id = ?
         ");
         $stmt->execute([$claimId]);
         $claimItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Log category and approver information for debugging
+        foreach ($claimItems as $item) {
+            error_log("Claim item category: {$item['category_name']}, Approver role: {$item['category_approver']}");
+        }
         
         if (empty($claimItems)) {
             error_log("No claim items found for claim ID: {$claimId}");
