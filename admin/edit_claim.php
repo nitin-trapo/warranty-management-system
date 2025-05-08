@@ -360,6 +360,12 @@ $stmt = $conn->prepare($notesQuery);
 $stmt->execute([$claimId]);
 $notes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Check if manual order exists for this claim
+$manualOrderQuery = "SELECT id, document_no FROM manual_orders WHERE claim_id = ? LIMIT 1";
+$stmt = $conn->prepare($manualOrderQuery);
+$stmt->execute([$claimId]);
+$manualOrder = $stmt->fetch(PDO::FETCH_ASSOC);
+
 // Organize media by item ID and type
 $media = [];
 foreach ($items as $item) {
@@ -391,6 +397,17 @@ foreach ($mediaResults as $mediaItem) {
         <a href="view_claim.php?id=<?php echo $claimId; ?>" class="btn btn-primary">
             <i class="fas fa-eye me-1"></i> View Claim
         </a>
+        <?php if (($claim['status'] == 'in_progress' || $claim['status'] == 'approved')): ?>
+        <?php if ($manualOrder): ?>
+        <button type="button" class="btn btn-success" disabled title="Manual order already created (<?php echo htmlspecialchars($manualOrder['document_no']); ?>)">
+            <i class="fas fa-check me-1"></i> Manual Order Created
+        </button>
+        <?php else: ?>
+        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#manualOrderModal" id="manual-order-btn">
+            <i class="fas fa-plus me-1"></i> Manual Order
+        </button>
+        <?php endif; ?>
+        <?php endif; ?>
         <a href="claims.php" class="btn btn-secondary">
             <i class="fas fa-arrow-left me-1"></i> Back to Claims
         </a>
@@ -1143,69 +1160,478 @@ foreach ($mediaResults as $mediaItem) {
             return true;
         });
         
+        // End of form validation
+        });
+
         // Delete media button click handler
-        $(document).on('click', '.delete-media-btn', function(e) {
-            e.preventDefault();
-            const mediaId = $(this).data('media-id');
-            const mediaType = $(this).data('media-type');
-            const filePath = $(this).data('file-path');
-            
-            // Confirm deletion
-            if (!confirm(`Are you sure you want to delete this ${mediaType}?`)) {
-                return;
+$(document).on('click', '.delete-media-btn', function(e) {
+    e.preventDefault();
+    const mediaId = $(this).data('media-id');
+    const mediaType = $(this).data('media-type');
+    const filePath = $(this).data('file-path');
+    
+    // Confirm deletion
+    if (!confirm(`Are you sure you want to delete this ${mediaType}?`)) {
+        return;
+    }
+    
+    // Show loading state
+    $(this).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deleting...');
+    $(this).prop('disabled', true);
+    
+    $.ajax({
+        url: 'ajax/delete_media.php',
+        type: 'POST',
+        data: {
+            media_id: mediaId,
+            file_path: filePath
+        },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                // Show success message
+                showAlert('success', response.message);
+                
+                // Remove the media element
+                $(`.delete-media-btn[data-media-id="${mediaId}"]`).closest('.col-md-3').remove();
+            } else {
+                // Show error message
+                showAlert('danger', response.message || 'An error occurred while deleting the media.');
             }
+        },
+        error: function(xhr, status, error) {
+            console.error("AJAX Error:", status, error);
             
-            // Show loading state
-            $(this).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deleting...');
-            $(this).prop('disabled', true);
-            
-            $.ajax({
-                url: 'ajax/delete_media.php',
-                type: 'POST',
-                data: {
-                    media_id: mediaId,
-                    file_path: filePath
-                },
-                dataType: 'json',
-                success: function(response) {
-                    if (response.success) {
-                        // Show success message
-                        showAlert('success', response.message);
-                        
-                        // Remove the media element
-                        $(`.delete-media-btn[data-media-id="${mediaId}"]`).closest('.col-md-3').remove();
-                    } else {
-                        // Show error message
-                        showAlert('danger', response.message || 'An error occurred while deleting the media.');
+            // Show error message
+            showAlert('danger', 'An error occurred while deleting the media. Please try again.');
+        },
+        complete: function() {
+            // Reset button state
+            $(`.delete-media-btn[data-media-id="${mediaId}"]`).html('<i class="fas fa-trash-alt"></i> Delete');
+            $(`.delete-media-btn[data-media-id="${mediaId}"]`).prop('disabled', false);
+        }
+    });
+});
+
+// Status change handler
+$('#status').on('change', function() {
+    const status = $(this).val();
+    
+    // Show/hide new SKUs field based on status
+    if (status === 'approved') {
+        $('#new_sku_container').show();
+    } else {
+        $('#new_sku_container').hide();
+    }
+});
+
+// Manual Order Modal Functionality
+$(document).ready(function() {
+    // Add SKU row
+    $(document).on('click', '.add-sku-btn', function() {
+        const newRow = `
+            <div class="sku-row mb-3">
+                <div class="row">
+                    <div class="col-md-9">
+                        <div class="input-group">
+                            <span class="input-group-text">SKU</span>
+                            <input type="text" class="form-control sku-input" placeholder="Enter SKU (e.g. TRC-DRIVER-TOY185-B-BL)">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-primary add-sku-btn">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button type="button" class="btn btn-danger remove-sku-btn">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        $('#sku-container').append(newRow);
+        updateSkuButtons();
+    });
+    
+    // Remove SKU row
+    $(document).on('click', '.remove-sku-btn', function() {
+        $(this).closest('.sku-row').remove();
+        updateSkuButtons();
+    });
+    
+    // Update buttons visibility
+    function updateSkuButtons() {
+        const rows = $('.sku-row');
+        if (rows.length === 1) {
+            rows.find('.remove-sku-btn').hide();
+        } else {
+            $('.remove-sku-btn').show();
+        }
+    }
+    
+    // Show alert in the manual order modal
+    function showManualOrderAlert(type, message) {
+        const alertHtml = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        $('#manual-order-alert-container').html(alertHtml);
+    }
+    
+    // Store verified SKUs
+    let verifiedSkus = [];
+    
+    // Verify SKUs
+    $('#verify-skus-btn').on('click', function() {
+        const $btn = $(this);
+        const originalText = $btn.html();
+        const skus = [];
+        let hasEmptySku = false;
+        
+        // Reset verified SKUs
+        verifiedSkus = [];
+        
+        // Hide Create Order button
+        $('#create-order-btn').hide();
+        
+        // Collect all SKUs
+        $('.sku-input').each(function() {
+            const sku = $(this).val().trim();
+            if (sku === '') {
+                hasEmptySku = true;
+            } else {
+                skus.push(sku);
+            }
+        });
+        
+        if (hasEmptySku) {
+            showManualOrderAlert('danger', 'Please fill in all SKU fields or remove empty rows.');
+            return;
+        }
+        
+        if (skus.length === 0) {
+            showManualOrderAlert('danger', 'Please add at least one SKU to verify.');
+            return;
+        }
+        
+        // Show loading state
+        $btn.html('<i class="fas fa-spinner fa-spin me-1"></i> Verifying...');
+        $btn.prop('disabled', true);
+        
+        // Clear previous results
+        $('#verification-results').html('<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Verifying SKUs...</div>');
+        
+        // Verify each SKU with the API
+        const verificationPromises = skus.map(sku => {
+            return new Promise((resolve, reject) => {
+                $.ajax({
+                    url: 'ajax/verify_sku.php',
+                    type: 'POST',
+                    data: JSON.stringify({ sku: sku }),
+                    contentType: 'application/json',
+                    success: function(response) {
+                        resolve({ sku: sku, response: response });
+                    },
+                    error: function(xhr) {
+                        reject({ sku: sku, error: xhr.responseText || 'Network error' });
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.error("AJAX Error:", status, error);
-                    
-                    // Show error message
-                    showAlert('danger', 'An error occurred while deleting the media. Please try again.');
-                },
-                complete: function() {
-                    // Reset button state
-                    $(`.delete-media-btn[data-media-id="${mediaId}"]`).html('<i class="fas fa-trash-alt"></i> Delete');
-                    $(`.delete-media-btn[data-media-id="${mediaId}"]`).prop('disabled', false);
-                }
+                });
             });
         });
         
-        // Status change handler
-        $('#status').on('change', function() {
-            const status = $(this).val();
+        // Process all verification results
+        Promise.allSettled(verificationPromises)
+            .then(results => {
+                let resultsHtml = '';
+                let hasSuccess = false;
+                
+                results.forEach(result => {
+                    if (result.status === 'fulfilled') {
+                        const data = result.value;
+                        const response = data.response;
+                        
+                        if (response.success) {
+                            hasSuccess = true;
+                            const skuData = response.data;
+                            
+                            // Store verified SKU data for order creation
+                            verifiedSkus.push({
+                                skuNo: skuData.storageClientSkuNo,
+                                skuDesc: skuData.skuDesc || '',
+                                orderQty: 1,
+                                itemCostPrice: 0,
+                                itemSalesPrice: 0.00,
+                                itemWeight: 1.00,
+                                itemHeight: 1.00,
+                                itemWidth: 1.00,
+                                itemLength: 1.00
+                            });
+                            
+                            resultsHtml += `
+                                <div class="card mb-3 border-success">
+                                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                                        <span><i class="fas fa-check-circle me-2"></i> ${data.sku}</span>
+                                        <span class="badge bg-light text-dark">${skuData.skuStatus || 'ACTIVE'}</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <p class="mb-1"><strong>Storage Client:</strong> ${skuData.storageClientNo || 'BOT1545'}</p>
+                                                <p class="mb-1"><strong>Country:</strong> ${skuData.country || 'MALAYSIA'}</p>
+                                                <p class="mb-1"><strong>Description:</strong> ${skuData.skuDesc || 'N/A'}</p>
+                                                <p class="mb-0"><strong>Available Quantity:</strong> ${skuData.availableQty || '0'}</p>
+                                            </div>
+                                            <div>
+                                                <button type="button" class="btn btn-sm btn-outline-danger remove-verified-sku" data-sku="${data.sku}">
+                                                    <i class="fas fa-times"></i> Remove
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            resultsHtml += `
+                                <div class="card mb-3 border-danger">
+                                    <div class="card-header bg-danger text-white">
+                                        <i class="fas fa-times-circle me-2"></i> ${data.sku}
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="mb-0 text-danger">${response.message || 'SKU verification failed'}</p>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        resultsHtml += `
+                            <div class="card mb-3 border-danger">
+                                <div class="card-header bg-danger text-white">
+                                    <i class="fas fa-times-circle me-2"></i> ${result.reason.sku}
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-0 text-danger">Error: ${result.reason.error}</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                // Display results
+                $('#verification-results').html(resultsHtml);
+                
+                // Show appropriate message and Create Order button if successful
+                if (hasSuccess) {
+                    showManualOrderAlert('success', 'SKU verification completed. See results below.');
+                    
+                    // Store verified SKUs in session
+                    $.ajax({
+                        url: 'ajax/store_verified_skus.php',
+                        type: 'POST',
+                        data: JSON.stringify({ verified_skus: verifiedSkus }),
+                        contentType: 'application/json',
+                        success: function(response) {
+                            if (response.success) {
+                                // Show Create Order button
+                                $('#create-order-btn').show();
+                            } else {
+                                showManualOrderAlert('warning', 'Could not store verified SKUs: ' + response.message);
+                            }
+                        },
+                        error: function() {
+                            showManualOrderAlert('warning', 'Could not store verified SKUs. Order creation may not work properly.');
+                        }
+                    });
+                } else {
+                    showManualOrderAlert('danger', 'No SKUs were successfully verified. Please check the details and try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Verification error:', error);
+                showManualOrderAlert('danger', 'An error occurred during verification. Please try again.');
+                $('#verification-results').html('<div class="alert alert-danger">Verification failed. Please try again.</div>');
+            })
+            .finally(() => {
+                // Reset button state
+                $btn.html(originalText);
+                $btn.prop('disabled', false);
+            });
+    });
+    
+    // Remove verified SKU
+    $(document).on('click', '.remove-verified-sku', function() {
+        const sku = $(this).data('sku');
+        
+        // Remove from verifiedSkus array
+        verifiedSkus = verifiedSkus.filter(item => item.skuNo !== sku);
+        
+        // Remove from UI
+        $(this).closest('.card').fadeOut(300, function() {
+            $(this).remove();
             
-            // Show/hide new SKUs field based on status
-            if (status === 'approved') {
-                $('#new_sku_container').show();
-            } else {
-                $('#new_sku_container').hide();
+            // Update session
+            $.ajax({
+                url: 'ajax/store_verified_skus.php',
+                type: 'POST',
+                data: JSON.stringify({ verified_skus: verifiedSkus }),
+                contentType: 'application/json'
+            });
+            
+            // Hide Create Order button if no verified SKUs remain
+            if (verifiedSkus.length === 0) {
+                $('#create-order-btn').hide();
+                showManualOrderAlert('warning', 'All verified SKUs have been removed. Please verify new SKUs.');
             }
         });
     });
+    
+    // Create Order button click handler
+    $('#create-order-btn').on('click', function() {
+        const $btn = $(this);
+        const originalText = $btn.html();
+        
+        // Show loading state
+        $btn.html('<i class="fas fa-spinner fa-spin me-1"></i> Creating Order...');
+        $btn.prop('disabled', true);
+        
+        // Get claim ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const claimId = urlParams.get('id');
+        
+        // Create order via AJAX
+        $.ajax({
+            url: 'ajax/create_manual_order.php',
+            type: 'POST',
+            data: JSON.stringify({ claim_id: claimId }),
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    showManualOrderAlert('success', `Order created successfully! Document No: ${response.document_no}`);
+                    
+                    // Disable Create Order button after successful creation
+                    $btn.html('<i class="fas fa-check me-1"></i> Order Created');
+                    $btn.removeClass('btn-primary').addClass('btn-success');
+                    $btn.prop('disabled', true);
+                    
+                    // Clear verified SKUs
+                    verifiedSkus = [];
+                    
+                    // Show success message for 2 seconds, then close modal and refresh page
+                    setTimeout(function() {
+                        // Close the modal
+                        $('#manualOrderModal').modal('hide');
+                        
+                        // Show a success message at the top of the page
+                        const alertHtml = `
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <strong>Success!</strong> Manual order created successfully with document number: ${response.document_no}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `;
+                        $('#alert-container').html(alertHtml);
+                        
+                        // Refresh the page after a short delay to show the updated button state
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 500);
+                    }, 2000);
+                } else {
+                    showManualOrderAlert('danger', 'Failed to create order: ' + response.message);
+                    $btn.html(originalText);
+                    $btn.prop('disabled', false);
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'An error occurred while creating the order.';
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.message) {
+                        errorMsg = response.message;
+                    }
+                } catch (e) {}
+                
+                showManualOrderAlert('danger', errorMsg);
+                $btn.html(originalText);
+                $btn.prop('disabled', false);
+            }
+        });
+    });
+    
+    // Status change handler
+    $('#status').on('change', function() {
+        const status = $(this).val();
+        
+        // Show/hide new SKUs field based on status
+        if (status === 'approved') {
+            $('#new_sku_container').show();
+        } else {
+            $('#new_sku_container').hide();
+        }
+    });
+});
 </script>
+
+<!-- Manual Order Modal -->
+<div class="modal fade" id="manualOrderModal" tabindex="-1" aria-labelledby="manualOrderModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="manualOrderModalLabel">Add Manual Order SKUs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i> Add SKUs to verify with ODIN API. Click the plus button to add multiple SKUs.
+                </div>
+                <div id="manual-order-alert-container"></div>
+                <div id="sku-container">
+                    <div class="sku-row mb-3">
+                        <div class="row">
+                            <div class="col-md-9">
+                                <div class="input-group">
+                                    <span class="input-group-text">SKU</span>
+                                    <input type="text" class="form-control sku-input" placeholder="Enter SKU (e.g. TRC-DRIVER-TOY185-B-BL)">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <button type="button" class="btn btn-primary add-sku-btn">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                                <button type="button" class="btn btn-danger remove-sku-btn" style="display: none;">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-primary" id="verify-skus-btn">
+                        <i class="fas fa-check me-1"></i> Verify SKUs
+                    </button>
+                </div>
+                <div class="mt-4">
+                    <h6>Verification Results</h6>
+                    <div id="verification-results" class="mt-2">
+                        <div class="alert alert-secondary">
+                            No SKUs verified yet. Click the Verify SKUs button to check availability.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <div>
+                    <button type="button" id="create-order-btn" class="btn btn-primary" style="display: none;">
+                        <i class="fas fa-shopping-cart me-1"></i> Create Order
+                    </button>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <?php
 // Include footer

@@ -457,7 +457,6 @@ try {
                             <tr>
                                 <th>#</th>
                                 <th>Note</th>
-                                <th>New SKUs</th>
                                 <th>Created By</th>
                                 <th>Created At</th>
                             </tr>
@@ -473,7 +472,6 @@ try {
                                     $noteText = preg_replace('/@([a-zA-Z0-9._]+)/', '<span class="badge bg-info text-dark">@$1</span>', $noteText);
                                     echo nl2br($noteText); 
                                 ?></td>
-                                <td><?php echo !empty($note['new_skus']) ? htmlspecialchars($note['new_skus']) : '-'; ?></td>
                                 <td><?php echo htmlspecialchars($note['created_by_name'] ?? 'System'); ?></td>
                                 <td><?php echo date('M d, Y h:i A', strtotime($note['created_at'])); ?></td>
                             </tr>
