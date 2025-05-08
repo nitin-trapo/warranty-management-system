@@ -103,7 +103,9 @@ $(document).ready(function() {
     // Handle the add note button click
     $('.add-note-btn').on('click', function(e) {
         e.preventDefault();
+        console.log('Add Note button clicked');
         if (!isSubmittingNote) {
+            // Call addClaimNote directly instead of submitting the form
             addClaimNote();
         }
     });
@@ -138,6 +140,12 @@ $(document).ready(function() {
                     return;
                 }
                 
+                // Extensive debugging of the response
+                console.log('AJAX SUCCESS RESPONSE:', response);
+                if (response.note && response.note.formatted_note) {
+                    console.log('Formatted note from server:', response.note.formatted_note);
+                }
+                
                 // Hide modal
                 modal.modal('hide');
                 
@@ -145,22 +153,17 @@ $(document).ready(function() {
                 $('#addNoteForm')[0].reset();
                 $('#taggedUsersPreview').hide();
                 
-                // Show success message
+                // Process response
                 if (response.success) {
                     // Show success message
-                    showAlert('success', response.message);
+                    showAlert('success', 'Note added successfully! Refreshing page...');
+                    console.log('Note added successfully, reloading page for proper formatting...');
                     
-                    // Handle the note display - either add to table or reload page
-                    // but never both to avoid duplicates
-                    if ($('.notes-table').length) {
-                        // Add to existing table without page reload
-                        addNoteToTable(response.note);
-                    } else {
-                        // No table exists, reload page to show the notes section
-                        setTimeout(function() {
-                            location.reload();
-                        }, 1000);
-                    }
+                    // FORCE PAGE RELOAD: This is the most reliable way to ensure proper formatting
+                    setTimeout(function() {
+                        // Use the most direct approach possible
+                        window.location.reload();
+                    }, 1000); // Short delay to show the success message
                 } else {
                     // Show error message
                     showAlert('danger', response.message || 'An error occurred while adding the note.');
@@ -242,6 +245,8 @@ $(document).ready(function() {
     
     // Function to add a new note to the notes table
     function addNoteToTable(note) {
+        console.log('Adding note to table:', note);
+        
         const notesTable = $('.notes-table tbody');
         const rowCount = notesTable.find('tr').length;
         
@@ -253,7 +258,40 @@ $(document).ready(function() {
         
         // Add cells
         newRow.append($('<td>').text(rowCount + 1));
-        newRow.append($('<td>').html(note.note.replace(/\n/g, '<br>')));
+        
+        // Format the note text to properly highlight tagged users
+        let noteText;
+        
+        // Check if the server provided a formatted note
+        if (note.formatted_note) {
+            console.log('Using server-formatted note:', note.formatted_note);
+            // Use the pre-formatted note directly without any processing
+            noteText = note.formatted_note;
+        } else {
+            console.log('Formatting note client-side from:', note.note);
+            // Format the note client-side
+            noteText = note.note;
+            // Escape HTML to prevent XSS
+            noteText = $('<div>').text(noteText).html();
+            console.log('After HTML escaping:', noteText);
+            
+            // Replace @username with highlighted badge - EXACT format as requested
+            noteText = noteText.replace(/@([a-zA-Z0-9._]+)/g, '<span class="badge bg-info text-dark">@$1</span>');
+            console.log('After highlighting tags:', noteText);
+            
+            // Convert line breaks to <br>
+            noteText = noteText.replace(/\n/g, '<br>');
+            console.log('Final formatted note:', noteText);
+        }
+        
+        // Create a temporary div to hold the note text
+        const noteCell = $('<td>');
+        
+        // Set the HTML content
+        noteCell.html(noteText);
+        
+        // Add the cell to the row
+        newRow.append(noteCell);
         newRow.append($('<td>').text(note.created_by_name || 'System'));
         newRow.append($('<td>').text(formatDate(note.created_at)));
         

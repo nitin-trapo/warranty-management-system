@@ -619,11 +619,15 @@ function sendTaggedUserNotification($taggedUsers, $claim, $note, $taggerName) {
             $userMail->Subject = $subject;
             
             // Create email content
-            $emailContent = "<p>Hello {$user['username']},</p>";
-            $emailContent .= "<p>You have been mentioned by <strong>{$taggerName}</strong> in a note on claim #{$claim['claim_number']}.</p>";
+            $emailContent = "<p>Hello <strong>{$user['username']}</strong>,</p>";
+            $emailContent .= "<p>You have been mentioned by <strong>{$taggerName}</strong> in a note on claim <strong>#{$claim['claim_number']}</strong>.</p>";
             $emailContent .= "<p><strong>Note Content:</strong></p>";
             $emailContent .= "<div style='background-color: #f5f5f5; padding: 10px; border-left: 4px solid #007bff; margin-bottom: 15px;'>";
-            $emailContent .= nl2br(htmlspecialchars($note));
+            
+            // Format the note to highlight tagged users in the email
+            $formattedNote = htmlspecialchars($note);
+            $formattedNote = preg_replace('/@([a-zA-Z0-9._]+)/', '<strong style="color: #007bff;">@$1</strong>', $formattedNote);
+            $emailContent .= nl2br($formattedNote);
             $emailContent .= "</div>";
             
             $emailContent .= "<h3>Claim Details</h3>";
@@ -634,7 +638,7 @@ function sendTaggedUserNotification($taggedUsers, $claim, $note, $taggerName) {
             $emailContent .= "<tr><td style='padding: 8px; border: 1px solid #ddd;'><strong>Status</strong></td><td style='padding: 8px; border: 1px solid #ddd;'>" . ucfirst(str_replace('_', ' ', $claim['status'])) . "</td></tr>";
             $emailContent .= "</table>";
             
-            $emailContent .= "<p><a href='" . getSystemUrl() . "/view_claim.php?id={$claim['id']}' style='display: inline-block; padding: 10px 15px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 4px;'>View Claim</a></p>";
+            // Removed the View Claim button as requested
             
             $emailContent .= "<p>Thank you,<br>TRAPO</p>";
             

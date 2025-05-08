@@ -83,6 +83,33 @@ try {
     $stmt->execute([$noteId]);
     $noteData = $stmt->fetch(PDO::FETCH_ASSOC);
     
+    // Format note text for display with highlighted tagged users
+    $formattedNote = $noteData['note'];
+    // Log the original note
+    error_log("Original note: " . $formattedNote);
+    
+    // Escape HTML to prevent XSS
+    $formattedNote = htmlspecialchars($formattedNote);
+    error_log("After htmlspecialchars: " . $formattedNote);
+    
+    // Replace @username with highlighted version using the EXACT format requested
+    $formattedNote = preg_replace('/@([a-zA-Z0-9._]+)/', '<span class="badge bg-info text-dark">@$1</span>', $formattedNote);
+    error_log("After highlighting tags: " . $formattedNote);
+    
+    // Convert newlines to <br> tags
+    $formattedNote = nl2br($formattedNote);
+    error_log("After nl2br: " . $formattedNote);
+    
+    // Add the formatted note to the note data
+    $noteData['formatted_note'] = $formattedNote;
+    error_log("Final formatted note added to response: " . $formattedNote);
+    
+    // Also add a plain text version for debugging
+    $noteData['note_text'] = $noteData['note'];
+    
+    // Add a debug flag to indicate this is the new version
+    $noteData['debug_version'] = 'v2';
+    
     // Process tagged users
     $taggedUsers = [];
     
@@ -111,8 +138,9 @@ try {
         
         // Process tagged users for UI display only
         if (!empty($taggedUsers) && !empty($claim)) {
-            // Remove @ symbols from note for email notification
-            $cleanNote = preg_replace('/@([\w.]+)/', '$1', $note);
+            // Keep the @ symbols in the note for email notification
+            // but we'll format them differently in the email_helper.php
+            $cleanNote = $note;
             
             // Email settings are now properly configured from email_config.php
             // Set to true to disable emails for testing
@@ -156,13 +184,14 @@ try {
         }
     }
     
-    // Return success response
+    // Return success response with force_reload flag
     echo json_encode([
         'success' => true,
         'message' => 'Note added successfully.' . 
                     (!empty($taggedUsers) ? ' Tagged users have been notified.' : ''),
         'note' => $noteData,
-        'tagged_users' => $taggedUsers
+        'tagged_users' => $taggedUsers,
+        'force_reload' => true // Add this flag to force a page reload
     ]);
     
 } catch (PDOException $e) {

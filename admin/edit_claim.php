@@ -871,23 +871,12 @@ foreach ($mediaResults as $mediaItem) {
 <!-- Include user tagging JS -->
 <script src="js/user-tagging.js"></script>
 
+<!-- Include reload helper JS -->
+<script src="js/reload-helper.js"></script>
+
 <script>
     $(document).ready(function() {
-        // Direct handler for Add Note button loading state
-        $('.add-note-btn').on('click', function() {
-            const $btn = $(this);
-            const originalText = $btn.html();
-            $btn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...');
-            $btn.prop('disabled', true);
-            
-            // Reset the button after 10 seconds in case of error
-            setTimeout(function() {
-                if ($btn.prop('disabled')) {
-                    $btn.html(originalText);
-                    $btn.prop('disabled', false);
-                }
-            }, 10000);
-        });
+        // Removed direct handler for Add Note button - now handled in claim-notes.js
         // Status change handler
         $('#status').on('change', function() {
             // Status change event handler (previously controlled New SKUs visibility)
