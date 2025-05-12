@@ -84,7 +84,7 @@ try {
         throw new Exception(isset($orderDetails['error']) ? $orderDetails['error'] : 'Failed to retrieve order details');
     }
     
-    // Generate document number
+    // Generate document number - just use the order ID without any additional digits
     $documentNo = 'MO-' . $claim['order_id'];
     
     // Check if a manual order with this document number already exists
@@ -92,10 +92,10 @@ try {
     $stmt = $conn->prepare($checkQuery);
     $stmt->execute([$documentNo]);
     
-    if ($stmt->fetch()) {
-        // Add a timestamp to make the document number unique
-        $documentNo = 'MO-' . $claim['order_id'] . '-' . time();
-    }
+    // If a document with this number already exists, we'll still use the same number
+    // The database will still create a unique record with a unique ID
+    // This approach allows for multiple manual orders with the same document number
+    // if needed for the same order
     
     // Ensure we have a phone number (required by API)
     $customerPhone = !empty($claim['customer_phone']) ? $claim['customer_phone'] : '+60123456789';
@@ -206,8 +206,18 @@ try {
     if (curl_errno($curl)) {
         $errorMessage = "[" . date('Y-m-d H:i:s') . "] cURL Error: " . curl_error($curl) . "\n";
         file_put_contents($logFile, $errorMessage, FILE_APPEND);
+        
+        // Get the specific error
+        $errorCode = curl_errno($curl);
+        $errorMsg = curl_error($curl);
         curl_close($curl);
-        throw new Exception('API connection error: ' . curl_error($curl));
+        
+        // Provide a more user-friendly message for timeout errors
+        if ($errorCode == CURLE_OPERATION_TIMEDOUT) {
+            throw new Exception('API connection error: The request timed out. Please try again later.');
+        } else {
+            throw new Exception('API connection error: ' . $errorMsg);
+        }
     }
     
     // Get HTTP status code
@@ -229,9 +239,24 @@ try {
     }
     
     if (!isset($responseData['success']) || $responseData['success'] !== true) {
-        $errorMessage = isset($responseData['msgList']) && isset($responseData['msgList'][0]) && isset($responseData['msgList'][0]['msgText']) 
-            ? $responseData['msgList'][0]['msgText'] 
-            : 'Invalid response from API';
+        // Log the full response for debugging
+        $debugLog = "[" . date('Y-m-d H:i:s') . "] API Error Response: " . json_encode($responseData, JSON_PRETTY_PRINT) . "\n";
+        file_put_contents($logFile, $debugLog, FILE_APPEND);
+        
+        // Extract error message with more detailed fallbacks
+        if (isset($responseData['msgList']) && is_array($responseData['msgList']) && !empty($responseData['msgList'])) {
+            if (isset($responseData['msgList'][0]['msgText'])) {
+                $errorMessage = $responseData['msgList'][0]['msgText'];
+            } else {
+                $errorMessage = json_encode($responseData['msgList'][0]);
+            }
+        } elseif (isset($responseData['message'])) {
+            $errorMessage = $responseData['message'];
+        } elseif (isset($responseData['error'])) {
+            $errorMessage = $responseData['error'];
+        } else {
+            $errorMessage = 'Unknown error from API';
+        }
         
         throw new Exception('API error: ' . $errorMessage);
     }
@@ -255,12 +280,12 @@ try {
     // Get the inserted order ID
     $orderId = $conn->lastInsertId();
     
-    // Add a note to the claim
+    // Add a note to the claim with better formatting
     $noteQuery = "INSERT INTO claim_notes (claim_id, note, created_by) VALUES (?, ?, ?)";
     $stmt = $conn->prepare($noteQuery);
     $stmt->execute([
         $claimId,
-        "Manual order created with document number: " . $documentNo,
+        "✅ Manual order created successfully\nDocument Number: " . $documentNo,
         $_SESSION['user_id']
     ]);
     

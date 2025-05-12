@@ -2,13 +2,97 @@
 /**
  * AJAX handler for SKU verification
  * This file processes AJAX requests for SKU verification and returns JSON responses
+ * 
+ * Includes local caching mechanism to handle API timeouts and improve performance
  */
+
+/**
+ * Check if a SKU exists in the local cache
+ * 
+ * @param string $sku The SKU to check
+ * @return array|false The cached SKU data or false if not found
+ */
+function checkCachedSku($sku) {
+    // Get database connection
+    $conn = getDbConnection();
+    
+    try {
+        // Check if we have this SKU in our local cache
+        $query = "SELECT sku_data, created_at FROM sku_cache WHERE sku = ? AND created_at > ?";
+        $stmt = $conn->prepare($query);
+        
+        // Only use cache entries from the last 24 hours
+        $cacheValidTime = date('Y-m-d H:i:s', strtotime('-24 hours'));
+        $stmt->execute([$sku, $cacheValidTime]);
+        
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result) {
+            // Return the cached SKU data
+            return json_decode($result['sku_data'], true);
+        }
+    } catch (Exception $e) {
+        // Log error but continue with API call
+        $logDir = '../../logs';
+        $logFile = $logDir . '/api_requests.log';
+        $errorMessage = "[" . date('Y-m-d H:i:s') . "] Error checking SKU cache: " . $e->getMessage() . "\n";
+        file_put_contents($logFile, $errorMessage, FILE_APPEND);
+    }
+    
+    return false;
+}
+
+/**
+ * Cache a SKU for future use
+ * 
+ * @param string $sku The SKU to cache
+ * @param array $skuData The SKU data to cache
+ * @return bool True on success, false on failure
+ */
+function cacheSku($sku, $skuData) {
+    // Get database connection
+    $conn = getDbConnection();
+    
+    try {
+        // First check if this SKU is already in the cache
+        $checkQuery = "SELECT id FROM sku_cache WHERE sku = ?";
+        $stmt = $conn->prepare($checkQuery);
+        $stmt->execute([$sku]);
+        
+        $existingId = $stmt->fetchColumn();
+        
+        if ($existingId) {
+            // Update existing cache entry
+            $query = "UPDATE sku_cache SET sku_data = ?, created_at = NOW() WHERE id = ?";
+            $stmt = $conn->prepare($query);
+            $stmt->execute([json_encode($skuData), $existingId]);
+        } else {
+            // Insert new cache entry
+            $query = "INSERT INTO sku_cache (sku, sku_data, created_at) VALUES (?, ?, NOW())";
+            $stmt = $conn->prepare($query);
+            $stmt->execute([$sku, json_encode($skuData)]);
+        }
+        
+        return true;
+    } catch (Exception $e) {
+        // Log error but continue
+        $logDir = '../../logs';
+        $logFile = $logDir . '/api_requests.log';
+        $errorMessage = "[" . date('Y-m-d H:i:s') . "] Error caching SKU: " . $e->getMessage() . "\n";
+        file_put_contents($logFile, $errorMessage, FILE_APPEND);
+    }
+    
+    return false;
+}
 
 // Include necessary files
 require_once '../../config/config.php';
 require_once '../../config/database.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/odin_api_helper.php';
+
+// Establish database connection
+$conn = getDbConnection();
 
 // Set content type to JSON
 header('Content-Type: application/json');
@@ -97,6 +181,7 @@ try {
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
         CURLOPT_TIMEOUT => ODIN_API_TIMEOUT,
+        CURLOPT_CONNECTTIMEOUT => ODIN_API_CONNECT_TIMEOUT,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -122,6 +207,21 @@ try {
         $errorCode = curl_errno($curl);
         $errorMsg = curl_error($curl);
         curl_close($curl);
+        
+        // Check if we have a cached version of this SKU
+        $cachedSku = checkCachedSku($sku);
+        if ($cachedSku) {
+            $logMessage = "[" . date('Y-m-d H:i:s') . "] Using cached SKU data for: " . $sku . "\n";
+            file_put_contents($logFile, $logMessage, FILE_APPEND);
+            
+            echo json_encode([
+                'success' => true,
+                'message' => 'SKU verified from local cache (API unavailable)',
+                'data' => $cachedSku,
+                'from_cache' => true
+            ]);
+            exit;
+        }
         
         // Provide a more user-friendly message for timeout errors
         if ($errorCode == CURLE_OPERATION_TIMEDOUT) {
@@ -171,18 +271,24 @@ try {
     // Get SKU data from response
     $skuData = $responseData['returnObject']['currentPageData'][0];
     
+    // Prepare SKU data
+    $skuDataFormatted = [
+        'storageClientNo' => $skuData['storageClientNo'] ?? 'BOT1545',
+        'storageClientSkuNo' => $skuData['storageClientSkuNo'] ?? $sku,
+        'country' => $skuData['country'] ?? 'MALAYSIA',
+        'skuDesc' => $skuData['skuDesc'] ?? '',
+        'skuStatus' => $skuData['skuStatus'] ?? 'ACTIVE',
+        'availableQty' => $skuData['availableQty'] ?? 0
+    ];
+    
+    // Cache the SKU data for future use
+    cacheSku($sku, $skuDataFormatted);
+    
     // Return successful response with SKU data
     echo json_encode([
         'success' => true,
         'message' => 'SKU verified successfully',
-        'data' => [
-            'storageClientNo' => $skuData['storageClientNo'] ?? 'BOT1545',
-            'storageClientSkuNo' => $skuData['storageClientSkuNo'] ?? $sku,
-            'country' => $skuData['country'] ?? 'MALAYSIA',
-            'skuDesc' => $skuData['skuDesc'] ?? '',
-            'skuStatus' => $skuData['skuStatus'] ?? 'ACTIVE',
-            'availableQty' => $skuData['availableQty'] ?? 0
-        ],
+        'data' => $skuDataFormatted,
         'raw_response' => $responseData // Include raw response for debugging
     ]);
     
