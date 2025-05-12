@@ -75,23 +75,36 @@ try {
     $requestLog = "[" . date('Y-m-d H:i:s') . "] SKU verification API request data: " . $requestJson . "\n";
     file_put_contents($logFile, $requestLog, FILE_APPEND);
     
+    // Get authentication data
+    $authData = getOdinApiAuth();
+    
+    // Check if authentication was successful
+    if (!$authData) {
+        throw new Exception('Failed to authenticate with the API');
+    }
+    
+    // Log authentication data
+    $authLog = "[" . date('Y-m-d H:i:s') . "] Using auth data: JSESSIONID=" . substr($authData['jsessionid'], 0, 10) . "..., Token=" . substr($authData['auth_token'], 0, 10) . "...\n";
+    file_put_contents($logFile, $authLog, FILE_APPEND);
+    
     // Initialize cURL session
     $curl = curl_init();
     
-    // Set cURL options - exactly matching your working Postman example
+    // Set cURL options with proper authentication
     curl_setopt_array($curl, array(
         CURLOPT_URL => $apiUrl,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,  // No timeout
+        CURLOPT_TIMEOUT => ODIN_API_TIMEOUT,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_POSTFIELDS => $requestJson,
         CURLOPT_HTTPHEADER => array(
             'Content-Type: application/json',
-            'Cookie: JSESSIONID=f2584d47dcf24cefb72ba3a5a2f3'
+            'Authorization: ' . $authData['auth_token'],
+            'Cookie: JSESSIONID=' . $authData['jsessionid']
         ),
         CURLOPT_SSL_VERIFYPEER => false, // Disable SSL verification for testing
         CURLOPT_SSL_VERIFYHOST => 0      // Disable host verification for testing
@@ -104,8 +117,18 @@ try {
     if (curl_errno($curl)) {
         $errorMessage = "[" . date('Y-m-d H:i:s') . "] cURL Error: " . curl_error($curl) . "\n";
         file_put_contents($logFile, $errorMessage, FILE_APPEND);
+        
+        // Get the specific error
+        $errorCode = curl_errno($curl);
+        $errorMsg = curl_error($curl);
         curl_close($curl);
-        throw new Exception('API connection error: ' . curl_error($curl));
+        
+        // Provide a more user-friendly message for timeout errors
+        if ($errorCode == CURLE_OPERATION_TIMEDOUT) {
+            throw new Exception('API connection error: The request timed out. Please try again later.');
+        } else {
+            throw new Exception('API connection error: ' . $errorMsg);
+        }
     }
     
     // Get HTTP status code
