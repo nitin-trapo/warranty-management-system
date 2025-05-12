@@ -19,7 +19,7 @@ requireAdminOrCsAgent();
 // Mark all as read if requested
 if (isset($_GET['mark_all_read'])) {
     markAllNotificationsAsRead($_SESSION['user_id']);
-    header('Location: notifications.php');
+    header('Location: ' . BASE_URL . '/admin/notifications.php');
     exit;
 }
 
@@ -33,7 +33,7 @@ if (isset($_GET['mark_read']) && is_numeric($_GET['mark_read'])) {
         exit;
     }
     
-    header('Location: notifications.php');
+    header('Location: ' . BASE_URL . '/admin/notifications.php');
     exit;
 }
 

@@ -14,7 +14,7 @@ require_once '../includes/db_connect.php';
 // Check if form was submitted
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['claim_id']) || !isset($_POST['note'])) {
     // Redirect to claims page
-    header('Location: claims.php');
+    header('Location: ' . BASE_URL . '/admin/claims.php');
     exit;
 }
 
@@ -24,7 +24,7 @@ $note = trim($_POST['note']);
 // Validate note
 if (empty($note)) {
     $_SESSION['error_message'] = 'Note cannot be empty.';
-    header('Location: view_claim.php?id=' . $claimId);
+    header('Location: ' . BASE_URL . '/admin/view_claim.php?id=' . $claimId);
     exit;
 }
 
@@ -50,5 +50,5 @@ try {
 }
 
 // Redirect back to view claim page
-header('Location: view_claim.php?id=' . $claimId);
+header('Location: ' . BASE_URL . '/admin/view_claim.php?id=' . $claimId);
 exit;

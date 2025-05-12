@@ -13,7 +13,7 @@ enforceAdminOnly();
 
 // Validate file parameter
 if (!isset($_GET['file']) || empty($_GET['file'])) {
-    header('Location: settings.php?tab=backup');
+    header('Location: ' . BASE_URL . '/admin/settings.php?tab=backup');
     exit;
 }
 
@@ -22,7 +22,7 @@ $fileName = basename($_GET['file']);
 
 // Prevent directory traversal
 if (strpos($fileName, '..') !== false || strpos($fileName, '/') !== false || strpos($fileName, '\\') !== false) {
-    header('Location: settings.php?tab=backup&error=invalid_file');
+    header('Location: ' . BASE_URL . '/admin/settings.php?tab=backup&error=invalid_file');
     exit;
 }
 
@@ -32,7 +32,7 @@ $filePath = $backupDir . '/' . $fileName;
 
 // Check if file exists
 if (!file_exists($filePath)) {
-    header('Location: settings.php?tab=backup&error=file_not_found');
+    header('Location: ' . BASE_URL . '/admin/settings.php?tab=backup&error=file_not_found');
     exit;
 }
 
@@ -42,7 +42,7 @@ $fileExtension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
 
 // Validate file extension (only allow zip files)
 if ($fileExtension !== 'zip') {
-    header('Location: settings.php?tab=backup&error=invalid_extension');
+    header('Location: ' . BASE_URL . '/admin/settings.php?tab=backup&error=invalid_extension');
     exit;
 }
 

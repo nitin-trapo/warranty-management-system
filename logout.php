@@ -13,5 +13,5 @@ require_once 'includes/auth_helper.php';
 logout();
 
 // Redirect to login page
-header('Location: login.php');
+header('Location: ' . BASE_URL . '/login.php');
 exit;

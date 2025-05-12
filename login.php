@@ -19,11 +19,11 @@ $step = 'email'; // Default step is email input
 if (isLoggedIn()) {
     // Redirect based on user role
     if (isAdmin()) {
-        header('Location: admin/dashboard.php');
+        header('Location: ' . BASE_URL . '/admin/dashboard.php');
     } else if (isCsAgent()) {
-        header('Location: admin/dashboard.php');
+        header('Location: ' . BASE_URL . '/admin/dashboard.php');
     } else {
-        header('Location: admin/dashboard.php');
+        header('Location: ' . BASE_URL . '/admin/dashboard.php');
     }
     exit;
 }

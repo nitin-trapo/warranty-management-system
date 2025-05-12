@@ -20,7 +20,7 @@ $conn = getDbConnection();
 // Check if claim ID is provided
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     // Redirect to claims page
-    header('Location: claims.php');
+    header('Location: ' . BASE_URL . '/admin/claims.php');
     exit;
 }
 
@@ -204,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         }
                         
                         // Validate file extension
-                        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif'];
+                        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
                         if (!in_array($fileExtension, $allowedExtensions)) {
                             throw new Exception("Photo '{$fileName}' has an invalid extension. Allowed: " . implode(', ', $allowedExtensions));
                         }
@@ -342,7 +342,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     } catch (Exception $e) {
         // Rollback transaction
         $conn->rollBack();
-        throw $e;
+        
+        // Log the error
+        error_log("Error updating claim: " . $e->getMessage());
+        
+        // Set error message in session
+        $_SESSION['error_message'] = 'Error: ' . $e->getMessage();
+        
+        // Redirect back to the edit claim page with error
+        header("Location: " . BASE_URL . "/admin/edit_claim.php?id={$claimId}&error=1");
+        exit;
     }
 }
 

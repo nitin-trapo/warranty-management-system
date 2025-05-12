@@ -17,12 +17,12 @@ require_once 'includes/auth_helper.php';
 if (isLoggedIn()) {
     // Redirect based on user role
     if (isAdmin()) {
-        header('Location: admin/dashboard.php');
+        header('Location: ' . BASE_URL . '/admin/dashboard.php');
     } else {
-        header('Location: cs_agent/dashboard.php');
+        header('Location: ' . BASE_URL . '/cs_agent/dashboard.php');
     }
 } else {
     // Redirect to login page
-    header('Location: login.php');
+    header('Location: ' . BASE_URL . '/login.php');
 }
 exit;

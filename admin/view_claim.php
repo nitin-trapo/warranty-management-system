@@ -23,7 +23,7 @@ $conn = getDbConnection();
 // Check if claim ID is provided
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     // Redirect to claims page
-    header('Location: claims.php');
+    header('Location: ' . BASE_URL . '/admin/claims.php');
     exit;
 }
 
@@ -49,7 +49,7 @@ try {
     
     if (!$claim) {
         // Claim not found, redirect to claims page
-        header('Location: claims.php');
+        header('Location: ' . BASE_URL . '/admin/claims.php');
         exit;
     }
     

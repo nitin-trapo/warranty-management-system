@@ -5,6 +5,11 @@
  * This file contains helper functions for handling file paths and URLs.
  */
 
+// Include configuration file if not already included
+if (!defined('BASE_URL')) {
+    require_once __DIR__ . '/../config/config.php';
+}
+
 /**
  * Convert a file path to a web-accessible URL
  * 
@@ -22,7 +27,7 @@ function getFileUrl($filePath) {
         $filePath = substr($filePath, 3);
     }
     
-    // For localhost, construct the full URL with project folder
-    return 'http://localhost/warranty-management-system/' . $filePath;
+    // Construct the full URL using the BASE_URL constant
+    return BASE_URL . '/' . $filePath;
 }
 ?>

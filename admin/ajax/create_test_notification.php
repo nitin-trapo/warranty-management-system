@@ -6,6 +6,7 @@
  */
 
 // Include required files
+require_once '../../config/config.php';
 require_once '../../includes/auth_helper.php';
 require_once '../../config/database.php';
 require_once '../../includes/notification_helper.php';
@@ -30,10 +31,10 @@ $messages = [
 $message = $messages[array_rand($messages)];
 
 $links = [
-    'dashboard.php',
-    'claims.php',
-    'view_claim.php?id=1',
-    'profile.php',
+    BASE_URL . '/admin/dashboard.php',
+    BASE_URL . '/admin/claims.php',
+    BASE_URL . '/admin/view_claim.php?id=1',
+    BASE_URL . '/admin/profile.php',
     ''
 ];
 $link = $links[array_rand($links)];
@@ -45,12 +46,12 @@ $success = addNotification($type, $message, $_SESSION['user_id'], $link);
 echo json_encode([
     'success' => $success,
     'message' => $success ? 'Test notification created successfully' : 'Failed to create test notification',
-    'redirect' => 'notifications.php'
+    'redirect' => BASE_URL . '/admin/notifications.php'
 ]);
 
 // Redirect if not AJAX
 if (!isset($_SERVER['HTTP_X_REQUESTED_WITH']) || strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) != 'xmlhttprequest') {
-    header('Location: ../notifications.php');
+    header('Location: ' . BASE_URL . '/admin/notifications.php');
     exit;
 }
 ?>

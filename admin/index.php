@@ -15,13 +15,13 @@ if (isLoggedIn()) {
     // Check if user is admin
     if (isAdmin()) {
         // Redirect to admin dashboard
-        header('Location: dashboard.php');
+        header('Location: ' . BASE_URL . '/admin/dashboard.php');
     } else {
         // Redirect to CS agent dashboard (not admin)
-        header('Location: ../cs_agent/dashboard.php');
+        header('Location: ' . BASE_URL . '/cs_agent/dashboard.php');
     }
 } else {
     // Redirect to login page
-    header('Location: ../login.php');
+    header('Location: ' . BASE_URL . '/login.php');
 }
 exit;

@@ -14,7 +14,7 @@ $conn = getDbConnection();
 // Check if media ID and claim ID are provided
 if (!isset($_GET['id']) || empty($_GET['id']) || !isset($_GET['claim_id']) || empty($_GET['claim_id'])) {
     // Redirect to claims page
-    header('Location: claims.php');
+    header('Location: ' . BASE_URL . '/admin/claims.php');
     exit;
 }
 
@@ -30,7 +30,7 @@ try {
     
     if (!$media) {
         // Media not found, redirect to edit claim page
-        header('Location: edit_claim.php?id=' . $claimId);
+        header('Location: ' . BASE_URL . '/admin/edit_claim.php?id=' . $claimId);
         exit;
     }
     
@@ -56,6 +56,6 @@ try {
 }
 
 // Redirect back to edit claim page
-header('Location: edit_claim.php?id=' . $claimId);
+header('Location: ' . BASE_URL . '/admin/edit_claim.php?id=' . $claimId);
 exit;
 ?>

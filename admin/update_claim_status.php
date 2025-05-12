@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['claim_id']) || !isse
         exit;
     } else {
         // Redirect to claims page
-        header('Location: claims.php');
+        header('Location: ' . BASE_URL . '/admin/claims.php');
         exit;
     }
 }
@@ -52,7 +52,7 @@ $note = isset($_POST['note']) ? trim($_POST['note']) : '';
 $validStatuses = ['new', 'in_progress', 'on_hold', 'approved', 'rejected'];
 if (!in_array($status, $validStatuses)) {
     $_SESSION['error_message'] = 'Invalid status value.';
-    header('Location: claims.php');
+    header('Location: ' . BASE_URL . '/admin/claims.php');
     exit;
 }
 
@@ -115,7 +115,7 @@ try {
         $_SESSION['success_message'] = 'Claim status updated successfully.';
         
         // Redirect back to claims page for regular form submissions
-        header('Location: claims.php');
+        header('Location: ' . BASE_URL . '/admin/claims.php');
     }
     exit;
 } catch (PDOException $e) {
@@ -143,7 +143,7 @@ try {
         $_SESSION['error_message'] = 'An error occurred while updating the claim status. Please try again.';
         
         // Redirect back to claims page for regular form submissions
-        header('Location: claims.php');
+        header('Location: ' . BASE_URL . '/admin/claims.php');
     }
     exit;
 }
