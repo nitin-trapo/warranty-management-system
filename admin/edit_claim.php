@@ -598,7 +598,7 @@ foreach ($mediaResults as $mediaItem) {
                                                 "../uploads/claims/{$claimId}/items/{$item['id']}/photos/" . basename($filePath)
                                             ];
                                             
-                                            $imgSrc = "/warranty-management-system/assets/img/placeholder-image.png";
+                                            $imgSrc = BASE_URL . "/assets/img/placeholder-image.png";
                                             foreach ($paths as $path) {
                                                 if (file_exists($path)) {
                                                     // Use relative path for browser
@@ -606,7 +606,7 @@ foreach ($mediaResults as $mediaItem) {
                                                         $imgSrc = substr($path, strlen($_SERVER['DOCUMENT_ROOT']));
                                                     } else {
                                                         // Convert to web path
-                                                        $imgSrc = str_replace("../", "/warranty-management-system/", $path);
+                                                        $imgSrc = str_replace("../", BASE_URL . "/", $path);
                                                     }
                                                     break;
                                                 }
@@ -667,7 +667,7 @@ foreach ($mediaResults as $mediaItem) {
                                                 "../uploads/claims/{$claimId}/items/{$item['id']}/videos/" . basename($filePath)
                                             ];
                                             
-                                            $videoSrc = "/warranty-management-system/assets/img/placeholder-image.png";
+                                            $videoSrc = BASE_URL . "/assets/img/placeholder-image.png";
                                             foreach ($paths as $path) {
                                                 if (file_exists($path)) {
                                                     // Use relative path for browser
@@ -675,7 +675,7 @@ foreach ($mediaResults as $mediaItem) {
                                                         $videoSrc = substr($path, strlen($_SERVER['DOCUMENT_ROOT']));
                                                     } else {
                                                         // Convert to web path
-                                                        $videoSrc = str_replace("../", "/warranty-management-system/", $path);
+                                                        $videoSrc = str_replace("../", BASE_URL . "/", $path);
                                                     }
                                                     break;
                                                 }

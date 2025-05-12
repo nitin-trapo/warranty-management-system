@@ -380,11 +380,11 @@ try {
                                     <div class="card h-100 shadow-sm">
                                         <?php 
                                         // Construct the correct file path
-                                        $photoPath = "/warranty-management-system/uploads/claims/{$claimId}/items/{$itemId}/photos/" . basename(htmlspecialchars($item['file_path']));
+                                        $photoPath = BASE_URL . "/uploads/claims/{$claimId}/items/{$itemId}/photos/" . basename(htmlspecialchars($item['file_path']));
                                         
                                         // Check if file exists, otherwise use a placeholder
                                         $serverPath = $_SERVER['DOCUMENT_ROOT'] . $photoPath;
-                                        $imgSrc = file_exists($serverPath) ? $photoPath : "/warranty-management-system/assets/img/placeholder-image.png";
+                                        $imgSrc = file_exists($serverPath) ? $photoPath : BASE_URL . "/assets/img/placeholder-image.png";
                                         ?>
                                         <a href="<?php echo $imgSrc; ?>" target="_blank" class="image-link">
                                             <img src="<?php echo $imgSrc; ?>" class="card-img-top" alt="Claim Photo" style="height: 180px; object-fit: cover;">
@@ -400,7 +400,7 @@ try {
                                     <div class="card h-100 shadow-sm">
                                         <?php 
                                         // Construct the correct file path
-                                        $videoPath = "/warranty-management-system/uploads/claims/{$claimId}/items/{$itemId}/videos/" . basename(htmlspecialchars($item['file_path']));
+                                        $videoPath = BASE_URL . "/uploads/claims/{$claimId}/items/{$itemId}/videos/" . basename(htmlspecialchars($item['file_path']));
                                         
                                         // Check if file exists
                                         $serverPath = $_SERVER['DOCUMENT_ROOT'] . $videoPath;
