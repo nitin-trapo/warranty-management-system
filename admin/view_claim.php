@@ -379,12 +379,37 @@ try {
                                 <div class="col-md-3 mb-3">
                                     <div class="card h-100 shadow-sm">
                                         <?php 
-                                        // Construct the correct file path
-                                        $photoPath = BASE_URL . "/uploads/claims/{$claimId}/items/{$itemId}/photos/" . basename(htmlspecialchars($item['file_path']));
+                                        // Get the file path
+                                        $filePath = $item['file_path'];
+                                        $originalFilename = $item['original_filename'];
                                         
-                                        // Check if file exists, otherwise use a placeholder
-                                        $serverPath = $_SERVER['DOCUMENT_ROOT'] . $photoPath;
-                                        $imgSrc = file_exists($serverPath) ? $photoPath : BASE_URL . "/assets/img/placeholder-image.png";
+                                        // Try to get server path
+                                        $serverPath = $filePath;
+                                        if (strpos($filePath, '/') !== 0 && strpos($filePath, ':\\') !== 1) {
+                                            // Not an absolute path, try to convert
+                                            $serverPath = $_SERVER['DOCUMENT_ROOT'] . '/' . $filePath;
+                                        }
+                                        
+                                        // Try different path combinations
+                                        $paths = [
+                                            $serverPath,
+                                            "../" . $filePath,
+                                            "../uploads/claims/{$claimId}/items/{$itemId}/photos/" . basename($filePath)
+                                        ];
+                                        
+                                        $imgSrc = BASE_URL . "/assets/img/placeholder-image.png";
+                                        foreach ($paths as $path) {
+                                            if (file_exists($path)) {
+                                                // Use relative path for browser
+                                                if (strpos($path, $_SERVER['DOCUMENT_ROOT']) === 0) {
+                                                    $imgSrc = substr($path, strlen($_SERVER['DOCUMENT_ROOT']));
+                                                } else {
+                                                    // Convert to web path
+                                                    $imgSrc = str_replace("../", BASE_URL . "/", $path);
+                                                }
+                                                break;
+                                            }
+                                        }
                                         ?>
                                         <a href="<?php echo $imgSrc; ?>" target="_blank" class="image-link">
                                             <img src="<?php echo $imgSrc; ?>" class="card-img-top" alt="Claim Photo" style="height: 180px; object-fit: cover;">
@@ -399,12 +424,40 @@ try {
                                 <div class="col-md-4 mb-3">
                                     <div class="card h-100 shadow-sm">
                                         <?php 
-                                        // Construct the correct file path
-                                        $videoPath = BASE_URL . "/uploads/claims/{$claimId}/items/{$itemId}/videos/" . basename(htmlspecialchars($item['file_path']));
+                                        // Get the file path
+                                        $filePath = $item['file_path'];
+                                        $originalFilename = $item['original_filename'];
                                         
-                                        // Check if file exists
-                                        $serverPath = $_SERVER['DOCUMENT_ROOT'] . $videoPath;
-                                        $videoExists = file_exists($serverPath);
+                                        // Try to get server path
+                                        $serverPath = $filePath;
+                                        if (strpos($filePath, '/') !== 0 && strpos($filePath, ':\\') !== 1) {
+                                            // Not an absolute path, try to convert
+                                            $serverPath = $_SERVER['DOCUMENT_ROOT'] . '/' . $filePath;
+                                        }
+                                        
+                                        // Try different path combinations
+                                        $paths = [
+                                            $serverPath,
+                                            "../" . $filePath,
+                                            "../uploads/claims/{$claimId}/items/{$itemId}/videos/" . basename($filePath)
+                                        ];
+                                        
+                                        $videoPath = BASE_URL . "/assets/img/placeholder-image.png";
+                                        $videoExists = false;
+                                        
+                                        foreach ($paths as $path) {
+                                            if (file_exists($path)) {
+                                                $videoExists = true;
+                                                // Use relative path for browser
+                                                if (strpos($path, $_SERVER['DOCUMENT_ROOT']) === 0) {
+                                                    $videoPath = substr($path, strlen($_SERVER['DOCUMENT_ROOT']));
+                                                } else {
+                                                    // Convert to web path
+                                                    $videoPath = str_replace("../", BASE_URL . "/", $path);
+                                                }
+                                                break;
+                                            }
+                                        }
                                         ?>
                                         
                                         <?php if ($videoExists): ?>
