@@ -232,9 +232,10 @@ function processOrderDetails($responseData) {
     $orderData = $responseData['returnObject'];
     
     // Convert timestamp to date with time
-    $orderDate = isset($orderData['orderDate']) 
-        ? date('Y-m-d H:i:s', $orderData['orderDate'] / 1000) 
-        : date('Y-m-d H:i:s');
+    $orderDate = date('Y-m-d H:i:s');
+    if (isset($orderData['orderDate']) && is_numeric($orderData['orderDate'])) {
+        $orderDate = date('Y-m-d H:i:s', $orderData['orderDate'] / 1000);
+    }
     
     // Get customer information from deliverToCustAddr
     $customerName = '';
