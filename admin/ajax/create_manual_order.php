@@ -84,18 +84,35 @@ try {
         throw new Exception(isset($orderDetails['error']) ? $orderDetails['error'] : 'Failed to retrieve order details');
     }
     
-    // Generate document number - just use the order ID without any additional digits
-    $documentNo = 'MO-' . $claim['order_id'];
+    // Generate document number - base document number is the order ID
+    $baseDocumentNo = 'MO-' . $claim['order_id'];
+    $documentNo = $baseDocumentNo;
     
     // Check if a manual order with this document number already exists
-    $checkQuery = "SELECT id FROM manual_orders WHERE document_no = ?";
+    $checkQuery = "SELECT document_no FROM manual_orders WHERE document_no LIKE ?";
     $stmt = $conn->prepare($checkQuery);
-    $stmt->execute([$documentNo]);
+    $stmt->execute([$baseDocumentNo . '%']);
+    $existingDocNos = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
-    // If a document with this number already exists, we'll still use the same number
-    // The database will still create a unique record with a unique ID
-    // This approach allows for multiple manual orders with the same document number
-    // if needed for the same order
+    // If document number already exists, append a suffix
+    if (!empty($existingDocNos)) {
+        // Find the highest suffix number
+        $maxSuffix = 0;
+        foreach ($existingDocNos as $existingDocNo) {
+            if ($existingDocNo === $baseDocumentNo) {
+                // Base document number exists without suffix
+                $maxSuffix = max($maxSuffix, 1);
+            } elseif (preg_match('/' . preg_quote($baseDocumentNo, '/') . '-([0-9]+)$/', $existingDocNo, $matches)) {
+                // Extract suffix number and update max if higher
+                $maxSuffix = max($maxSuffix, (int)$matches[1] + 1);
+            }
+        }
+        
+        // Append the new suffix
+        if ($maxSuffix > 0) {
+            $documentNo = $baseDocumentNo . '-' . $maxSuffix;
+        }
+    }
     
     // Ensure we have a phone number (required by API)
     $customerPhone = !empty($claim['customer_phone']) ? $claim['customer_phone'] : '+60123456789';
