@@ -5,8 +5,9 @@
  * This file handles the deletion of a warranty claim and all associated data.
  */
 
-// Include database connection
+// Include database connection and configuration
 require_once '../config/database.php';
+require_once '../config/config.php';
 
 // Start session if not already started
 if (session_status() === PHP_SESSION_NONE) {
