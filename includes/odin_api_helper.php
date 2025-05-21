@@ -311,6 +311,10 @@ function determineProductType($sku) {
         return 'TRAPO HEX ULTIMATE';
     } elseif (strpos($sku, 'TR3D') === 0) {
         return 'TRAPO XTREME';
+    } elseif (strpos($sku, 'OXPH') === 0) {
+        return 'PHONE HOLDER';
+    } elseif (strpos($sku, 'OXDC') === 0) {
+        return 'TRAPO DASHCAM';
     } else {
         return 'OTHER';
     }
