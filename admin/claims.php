@@ -462,17 +462,47 @@ if (isset($_POST['action']) && $_POST['action'] === 'submit_claim') {
 // Get claims from database with all associated items
 $claims = [];
 
-// Use the same query for both admins and CS agents to show all claims
+// Get filter parameters
+$categoryFilter = isset($_GET['category']) ? $_GET['category'] : '';
+$statusFilter = isset($_GET['status']) ? $_GET['status'] : '';
+$assignmentFilter = isset($_GET['assigned_to']) ? $_GET['assigned_to'] : '';
+
+// Build query with filters
 $claimsQuery = "SELECT c.id, c.order_id, c.customer_name, c.customer_email, c.status, 
-                   c.created_at, c.updated_at, c.created_by, c.claim_number, c.assigned_to,
-                   cc.name as category_name, cc.sla_days 
-            FROM claims c
-            LEFT JOIN claim_items ci ON c.id = ci.claim_id
-            LEFT JOIN claim_categories cc ON ci.category_id = cc.id
-            GROUP BY c.id
-            ORDER BY c.created_at DESC";
+                    c.created_at, c.updated_at, c.created_by, c.claim_number, c.assigned_to,
+                    cc.name as category_name, cc.sla_days 
+             FROM claims c
+             LEFT JOIN claim_items ci ON c.id = ci.claim_id
+             LEFT JOIN claim_categories cc ON ci.category_id = cc.id
+             WHERE 1=1";
+
+$params = [];
+
+// Add category filter if selected
+if (!empty($categoryFilter)) {
+    $claimsQuery .= " AND ci.category_id = ?";
+    $params[] = $categoryFilter;
+}
+
+// Add status filter if selected
+if (!empty($statusFilter)) {
+    $claimsQuery .= " AND c.status = ?";
+    $params[] = $statusFilter;
+}
+
+// Add assignment filter if selected
+if (!empty($assignmentFilter)) {
+    if ($assignmentFilter === 'unassigned') {
+        $claimsQuery .= " AND c.assigned_to IS NULL";
+    } else {
+        $claimsQuery .= " AND c.assigned_to = ?";
+        $params[] = $assignmentFilter;
+    }
+}
+
+$claimsQuery .= " GROUP BY c.id ORDER BY c.created_at DESC";
 $stmt = $conn->prepare($claimsQuery);
-$stmt->execute();
+$stmt->execute($params);
 $claims = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get items for each claim
@@ -498,6 +528,21 @@ $categoriesQuery = "SELECT id, name FROM claim_categories ORDER BY name";
 $stmt = $conn->prepare($categoriesQuery);
 $stmt->execute();
 $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get users for assignment dropdown
+$usersQuery = "SELECT id, username, first_name, last_name FROM users WHERE status = 'active' ORDER BY username";
+$stmt = $conn->prepare($usersQuery);
+$stmt->execute();
+$users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Define status options
+$statusOptions = [
+    'new' => 'New',
+    'in_progress' => 'In Progress',
+    'on_hold' => 'On Hold',
+    'approved' => 'Approved',
+    'rejected' => 'Rejected'
+];
 
 // Handle AJAX request for order lookup
 if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
@@ -693,6 +738,63 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQU
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>
 <?php endif; ?>
+
+<!-- Filter Section -->
+<div class="card mb-4">
+    <div class="card-header py-3 bg-primary text-white">
+        <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Filter Claims</h6>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="claims.php" id="filterForm">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label for="category" class="form-label">Category</label>
+                    <select class="form-select" id="category" name="category">
+                        <option value="">All Categories</option>
+                        <?php foreach ($categories as $category): ?>
+                            <option value="<?php echo $category['id']; ?>" <?php echo ($categoryFilter == $category['id']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($category['name']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="status" class="form-label">Status</label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="">All Statuses</option>
+                        <?php foreach ($statusOptions as $value => $label): ?>
+                            <option value="<?php echo $value; ?>" <?php echo ($statusFilter == $value) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($label); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="assigned_to" class="form-label">Assignment</label>
+                    <select class="form-select" id="assigned_to" name="assigned_to">
+                        <option value="">All Assignments</option>
+                        <option value="unassigned" <?php echo ($assignmentFilter == 'unassigned') ? 'selected' : ''; ?>>Unassigned</option>
+                        <?php foreach ($users as $user): ?>
+                            <option value="<?php echo $user['id']; ?>" <?php echo ($assignmentFilter == $user['id']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($user['first_name'] . ' ' . $user['last_name'] . ' (' . $user['username'] . ')'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="d-flex gap-2 w-100">
+                        <button type="submit" class="btn btn-primary flex-grow-1">
+                            <i class="fas fa-search me-1"></i> Search
+                        </button>
+                        <a href="claims.php" class="btn btn-outline-secondary">
+                            <i class="fas fa-redo"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
 
 <!-- Claims List -->
 <div class="card mb-4">
