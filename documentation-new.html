@@ -34,26 +34,12 @@
             left: 0;
             right: 0;
             z-index: 1040;
-            height: auto;
-            min-height: 60px;
         }
         
         .navbar-brand {
             font-weight: bold;
             color: white !important;
             margin-left: 10px;
-            font-size: 1.1rem;
-            white-space: normal;
-            line-height: 1.2;
-            display: flex;
-            align-items: center;
-        }
-        
-        @media (max-width: 576px) {
-            .navbar-brand {
-                font-size: 0.9rem;
-                max-width: 75%;
-            }
         }
         
         /* Toggle button styling */
@@ -84,14 +70,8 @@
             z-index: 1050;
             transition: left 0.3s ease;
             box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-            padding-top: 70px;
+            padding-top: 60px;
             padding-bottom: 20px;
-        }
-        
-        @media (max-width: 576px) {
-            .sidebar {
-                padding-top: 80px;
-            }
         }
         
         .sidebar.show {
@@ -119,16 +99,10 @@
         
         /* Main content */
         .main-content {
-            padding-top: 80px;
+            padding-top: 70px;
             transition: margin-left 0.3s ease;
             padding-left: 15px;
             padding-right: 15px;
-        }
-        
-        @media (max-width: 576px) {
-            .main-content {
-                padding-top: 90px;
-            }
         }
         
         /* Responsive design */
@@ -139,9 +113,6 @@
             
             .sidebar {
                 left: 0;
-                top: 60px; /* Align with navbar height */
-                height: calc(100vh - 60px); /* Adjust height to avoid overlap */
-                padding-top: 20px; /* Reset padding for desktop */
             }
             
             .sidebar-close {
@@ -396,13 +367,10 @@
                 <p>To access the system:</p>
                 <ol>
                     <li>Navigate to the system URL: <a href="http://trapo.com/wms">http://trapo.com/wms</a></li>
-                    <li>Enter your email address</li>
-                    <li>Click "Request OTP"</li>
-                    <li>Check your email for the one-time password (OTP)</li>
-                    <li>Enter the OTP in the login form</li>
-                    <li>Click "Verify & Login"</li>
+                    <li>Enter your username and password</li>
+                    <li>Click "Login"</li>
                 </ol>
-                <p>The OTP is valid for 10 minutes. If you don't receive the email, check your spam folder or click "Resend OTP" on the login page.</p>
+                <p>If you've forgotten your password, click the "Forgot Password" link on the login page to reset it.</p>
             </div>
             
             <div id="user-roles">
