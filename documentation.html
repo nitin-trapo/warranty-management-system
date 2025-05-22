@@ -502,6 +502,213 @@
             </div>
         </div>
         
+        <div class="section" id="reports">
+            <h2>Reports</h2>
+            <p>The system provides several reports to analyze warranty claim data. These reports help managers and administrators track claim performance, identify trends, and make data-driven decisions.</p>
+            
+            <div id="claim-performance-report">
+                <h3>Claim Performance Report</h3>
+                <p>This report shows the performance metrics for claims processing, including:</p>
+                <ul>
+                    <li>Average resolution time</li>
+                    <li>Claims by status</li>
+                    <li>Claims by agent</li>
+                    <li>SLA compliance percentage</li>
+                    <li>Customer satisfaction ratings</li>
+                </ul>
+                <p>To access this report:</p>
+                <ol>
+                    <li>Navigate to the Reports section from the main menu</li>
+                    <li>Select "Claim Performance" from the reports dropdown</li>
+                    <li>Set the date range for the report</li>
+                    <li>Click "Generate Report"</li>
+                </ol>
+                <p>The report can be exported in CSV, PDF, or Excel format using the export buttons at the top of the report.</p>
+                <div class="screenshot-placeholder">
+                    <p>Screenshot: Claim Performance Report</p>
+                </div>
+            </div>
+            
+            <div id="monthly-claims-report">
+                <h3>Monthly Claims Report</h3>
+                <p>This report provides a monthly breakdown of claims by category, displayed in a tabular format with:</p>
+                <ul>
+                    <li>Months as columns</li>
+                    <li>Categories as rows</li>
+                    <li>Totals for each category and month</li>
+                    <li>Month-over-month percentage changes</li>
+                    <li>Year-to-date totals</li>
+                </ul>
+                <p>To access this report:</p>
+                <ol>
+                    <li>Navigate to the Reports section from the main menu</li>
+                    <li>Select "Monthly Claims" from the reports dropdown</li>
+                    <li>Select the year for the report</li>
+                    <li>Click "Generate Report"</li>
+                </ol>
+                <p>You can drill down into specific categories by clicking on the category name in the report. The system also provides visual charts and graphs to help visualize the data.</p>
+                <div class="screenshot-placeholder">
+                    <p>Screenshot: Monthly Claims Report</p>
+                </div>
+            </div>
+            
+            <div id="custom-reports">
+                <h3>Custom Reports</h3>
+                <p>The system allows administrators to create custom reports based on specific requirements:</p>
+                <ol>
+                    <li>Navigate to the Reports section from the main menu</li>
+                    <li>Click on "Custom Reports"</li>
+                    <li>Click "New Report"</li>
+                    <li>Select the data fields to include</li>
+                    <li>Set filtering criteria</li>
+                    <li>Choose display options (table, chart, etc.)</li>
+                    <li>Save the report with a descriptive name</li>
+                </ol>
+                <p>Custom reports can be saved and shared with other users. They can also be scheduled to run automatically and be sent via email to designated recipients.</p>
+            </div>
+        </div>
+        
+        <div class="section" id="warranty-rules">
+            <h2>Warranty Rules Management</h2>
+            <p>The Warranty Rules Management module allows administrators to define and manage warranty policies for different product types. This ensures consistent application of warranty terms across all claims and helps maintain standardized warranty processing.</p>
+            
+            <div id="viewing-warranty-rules">
+                <h3>Viewing Warranty Rules</h3>
+                <p>To view existing warranty rules:</p>
+                <ol>
+                    <li>Navigate to the Warranty Rules section from the main menu</li>
+                    <li>Browse the list of existing rules</li>
+                    <li>Click on a rule to view its details</li>
+                </ol>
+                <p>The rule details page shows:</p>
+                <ul>
+                    <li>Product type covered by the rule</li>
+                    <li>Warranty duration</li>
+                    <li>Coverage details</li>
+                    <li>Exclusions</li>
+                    <li>Required documentation for claims</li>
+                    <li>Approval workflow</li>
+                </ul>
+                <div class="screenshot-placeholder">
+                    <p>Screenshot: Warranty Rule Details</p>
+                </div>
+            </div>
+            
+            <div id="creating-warranty-rules">
+                <h3>Creating Warranty Rules</h3>
+                <p>To create a new warranty rule:</p>
+                <ol>
+                    <li>Click the "New Rule" button in the Warranty Rules section</li>
+                    <li>Fill in the required information:</li>
+                    <ul>
+                        <li>Product type</li>
+                        <li>Warranty period (in months)</li>
+                        <li>Coverage details (parts, labor, shipping)</li>
+                        <li>Exclusions (misuse, natural disasters, etc.)</li>
+                        <li>Required documentation (proof of purchase, photos)</li>
+                        <li>Approval workflow (auto-approve, manager review)</li>
+                    </ul>
+                    <li>Click "Save Rule"</li>
+                </ol>
+                <p>Note: New warranty rules will apply to all future claims for the specified product type. Existing claims will continue to use the rules that were in effect when the claim was created.</p>
+                <div class="screenshot-placeholder">
+                    <p>Screenshot: Creating a New Warranty Rule</p>
+                </div>
+            </div>
+            
+            <div id="editing-warranty-rules">
+                <h3>Editing Warranty Rules</h3>
+                <p>To edit an existing warranty rule:</p>
+                <ol>
+                    <li>Navigate to the Warranty Rules section</li>
+                    <li>Find the rule you want to edit in the list</li>
+                    <li>Click the "Edit" button</li>
+                    <li>Make the necessary changes</li>
+                    <li>Click "Save Changes"</li>
+                </ol>
+                <p>When editing a warranty rule, you can choose to apply the changes to:</p>
+                <ul>
+                    <li>All future claims only</li>
+                    <li>All open claims (not yet resolved)</li>
+                    <li>All claims (including previously resolved claims)</li>
+                </ul>
+                <p>Caution: Applying changes to previously resolved claims may require manual review and could have legal implications.</p>
+            </div>
+            
+            <div id="warranty-rule-templates">
+                <h3>Warranty Rule Templates</h3>
+                <p>The system includes pre-defined warranty rule templates for common product types:</p>
+                <ul>
+                    <li>Electronics (12-month standard warranty)</li>
+                    <li>Appliances (24-month standard warranty)</li>
+                    <li>Furniture (36-month limited warranty)</li>
+                    <li>Clothing (30-day quality guarantee)</li>
+                </ul>
+                <p>To use a template:</p>
+                <ol>
+                    <li>Click "New Rule" in the Warranty Rules section</li>
+                    <li>Select "Use Template" from the dropdown</li>
+                    <li>Choose the appropriate template</li>
+                    <li>Customize the template as needed</li>
+                    <li>Click "Save Rule"</li>
+                </ol>
+            </div>
+        </div>
+        
+        <div class="section" id="user-management">
+            <h2>User Management</h2>
+            <p>The User Management section allows administrators to manage system users and their permissions.</p>
+            
+            <h3>Adding Users</h3>
+            <p>To add a new user to the system:</p>
+            <ol>
+                <li>Navigate to the User Management section</li>
+                <li>Click "Add User"</li>
+                <li>Enter the user's information:</li>
+                <ul>
+                    <li>Name</li>
+                    <li>Email address</li>
+                    <li>Role (Administrator, Manager, Agent, or Customer)</li>
+                </ul>
+                <li>Click "Save"</li>
+            </ol>
+            <p>The system will send an email to the new user with instructions to set up their account.</p>
+            
+            <h3>Managing User Permissions</h3>
+            <p>To modify a user's permissions:</p>
+            <ol>
+                <li>Find the user in the User Management section</li>
+                <li>Click "Edit"</li>
+                <li>Modify their role or specific permissions</li>
+                <li>Click "Save Changes"</li>
+            </ol>
+        </div>
+        
+        <div class="section" id="settings">
+            <h2>System Settings</h2>
+            <p>The Settings section allows administrators to configure system-wide settings.</p>
+            
+            <h3>Email Notifications</h3>
+            <p>To configure email notifications:</p>
+            <ol>
+                <li>Navigate to the Settings section</li>
+                <li>Select the "Email Notifications" tab</li>
+                <li>Enable or disable specific notification types</li>
+                <li>Customize email templates if needed</li>
+                <li>Click "Save Changes"</li>
+            </ol>
+            
+            <h3>SLA Configuration</h3>
+            <p>To configure Service Level Agreements:</p>
+            <ol>
+                <li>Navigate to the Settings section</li>
+                <li>Select the "SLA Configuration" tab</li>
+                <li>Set the default resolution time for different claim types</li>
+                <li>Configure escalation rules</li>
+                <li>Click "Save Changes"</li>
+            </ol>
+        </div>
+        
         <div class="section" id="troubleshooting">
             <h2>Troubleshooting</h2>
             <p>Common issues and their solutions:</p>
@@ -531,12 +738,26 @@
         <div class="section" id="appendix">
             <h2>Appendix</h2>
             
-            <h3>Glossary</h3>
-            <ul>
-                <li><strong>SLA:</strong> Deadline for a claim to be resolved</li>
-                <li><strong>SKU:</strong> Stock Keeping Unit - a unique identifier for each product</li>
-                <li><strong>Claim Status:</strong> The current state of a warranty claim (New, In Progress, Resolved, Closed)</li>
-            </ul>
+            <h3>Glossary of Terms</h3>
+            <dl>
+                <dt>Claim</dt>
+                <dd>A formal request for warranty service or replacement of a defective product.</dd>
+                
+                <dt>OTP (One-Time Password)</dt>
+                <dd>A temporary password sent to your email for secure authentication.</dd>
+                
+                <dt>SLA (Service Level Agreement)</dt>
+                <dd>Deadline for a claim to be resolved</dd>
+                
+                <dt>Warranty Period</dt>
+                <dd>The timeframe during which a product is covered by warranty protection.</dd>
+                
+                <dt>Claim Status</dt>
+                <dd>The current state of a warranty claim (e.g., Submitted, In Review, Approved, Rejected).</dd>
+                
+                <dt>SKU</dt>
+                <dd>Stock Keeping Unit - a unique identifier for each product.</dd>
+            </dl>
         </div>
     </div>
 
