@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Module - Warranty Management System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap">
+    <style>
+        :root {
+            --primary-color: #5b87a4;
+            --secondary-color: #2e4154;
+            --accent-color: #d35e5e;
+            --light-color: #f5f7f9;
+            --dark-color: #2c3e50;
+            --code-bg: #f8f9fa;
+            --border-color: #e9ecef;
+            --method-color: #e3f2fd;
+            --property-color: #fff3cd;
+            --namespace-color: #d1e7dd;
+        }
+        
+        body {
+            font-family: 'Source Sans Pro', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: var(--light-color);
+        }
+        
+        .navbar {
+            background-color: var(--secondary-color);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: white !important;
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 56px;
+            left: 0;
+            width: 280px;
+            height: calc(100vh - 56px);
+            background-color: white;
+            overflow-y: auto;
+            transition: all 0.3s;
+            z-index: 1000;
+            padding: 0;
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+        }
+        
+        .main-content {
+            margin-left: 280px;
+            padding: 20px 30px;
+            background-color: white;
+            min-height: calc(100vh - 56px);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .nav-item {
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .nav-link {
+            color: var(--dark-color);
+            padding: 0.8rem 1rem;
+            font-size: 0.95rem;
+        }
+        
+        .nav-link:hover {
+            background-color: var(--light-color);
+        }
+        
+        .nav-link.active {
+            background-color: var(--light-color);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        .section-title {
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        .subsection-title {
+            color: var(--secondary-color);
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        code {
+            background-color: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.9em;
+            color: var(--accent-color);
+        }
+        
+        pre {
+            background-color: var(--code-bg);
+            padding: 1rem;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            overflow-x: auto;
+        }
+        
+        .method-container, .property-container {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .method-container {
+            background-color: var(--method-color);
+        }
+        
+        .method-name, .property-name {
+            font-weight: 600;
+            color: var(--secondary-color);
+        }
+        
+        .method-signature {
+            font-family: monospace;
+            padding: 0.5rem;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 3px;
+            margin: 0.5rem 0;
+            overflow-x: auto;
+        }
+        
+        .param-table {
+            width: 100%;
+            margin: 1rem 0;
+        }
+        
+        .param-table th {
+            background-color: rgba(0, 0, 0, 0.05);
+            text-align: left;
+            padding: 0.5rem;
+        }
+        
+        .param-table td {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .param-name {
+            font-family: monospace;
+            font-weight: 600;
+        }
+        
+        .param-type {
+            color: var(--primary-color);
+            font-family: monospace;
+        }
+        
+        .return-value {
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 3px;
+        }
+        
+        .namespace-badge {
+            display: inline-block;
+            background-color: var(--namespace-color);
+            padding: 0.3rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+        }
+        
+        .description {
+            margin-bottom: 1rem;
+        }
+        
+        .breadcrumb {
+            background-color: transparent;
+            padding: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        .breadcrumb-item a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        
+        .breadcrumb-item.active {
+            color: var(--dark-color);
+        }
+        
+        .toc {
+            background-color: var(--light-color);
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 2rem;
+        }
+        
+        .toc-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .toc-list {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        
+        .toc-list li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .toc-list a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        
+        .search-container {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .search-container input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="index.html">
+                Warranty Management System
+            </a>
+        </div>
+    </nav>
+
+    <div class="sidebar">
+        <div class="search-container">
+            <input type="text" placeholder="Search documentation..." id="search-input">
+        </div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link" href="index.html">
+                    <i class="fas fa-home me-2"></i> Overview
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="modules.html">
+                    <i class="fas fa-cubes me-2"></i> Modules
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="admin_module.html">
+                    <i class="fas fa-user-shield me-2"></i> Admin Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="claims_module.html">
+                    <i class="fas fa-file-alt me-2"></i> Claims Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="reports_module.html">
+                    <i class="fas fa-chart-bar me-2"></i> Reports Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="warranty_rules.html">
+                    <i class="fas fa-gavel me-2"></i> Warranty Rules
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="database_schema.html">
+                    <i class="fas fa-database me-2"></i> Database Schema
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="api_reference.html">
+                    <i class="fas fa-code me-2"></i> API Reference
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <div class="main-content">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="index.html">Home</a></li>
+                <li class="breadcrumb-item"><a href="modules.html">Modules</a></li>
+                <li class="breadcrumb-item active">Admin Module</li>
+            </ol>
+        </nav>
+
+        <h1 class="section-title">Admin Module</h1>
+        
+        <div class="namespace-badge">
+            <i class="fas fa-folder me-1"></i> WarrantySystem\Admin
+        </div>
+        
+        <div class="description">
+            <p>The Admin Module provides administrative functionality for the Warranty Management System, including user management, system configuration, and access control.</p>
+        </div>
+        
+        <div class="toc">
+            <div class="toc-title">Table of Contents</div>
+            <ul class="toc-list">
+                <li><a href="#overview">Module Overview</a></li>
+                <li><a href="#files">Key Files</a></li>
+                <li><a href="#user-management">User Management</a></li>
+                <li><a href="#categories">Categories Management</a></li>
+                <li><a href="#dashboard">Dashboard</a></li>
+                <li><a href="#functions">Core Functions</a></li>
+            </ul>
+        </div>
+        
+        <h2 class="subsection-title" id="overview">Module Overview</h2>
+        <p>The Admin Module is the central control panel for system administrators. It provides functionality for managing users, system settings, categories, and viewing system statistics through the dashboard.</p>
+        
+        <h2 class="subsection-title" id="files">Key Files</h2>
+        
+        <div class="method-container">
+            <div class="method-name">dashboard.php</div>
+            <div class="method-signature">Path: /admin/dashboard.php</div>
+            <div class="description">
+                <p>Main dashboard file that displays system statistics and key performance indicators.</p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">users.php</div>
+            <div class="method-signature">Path: /admin/users.php</div>
+            <div class="description">
+                <p>Handles user management functionality, including creating, editing, and deleting users.</p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">categories.php</div>
+            <div class="method-signature">Path: /admin/categories.php</div>
+            <div class="description">
+                <p>Manages claim categories, including creating, editing, and deleting categories.</p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">settings.php</div>
+            <div class="method-signature">Path: /admin/settings.php</div>
+            <div class="description">
+                <p>Handles system-wide settings and configuration options.</p>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="user-management">User Management</h2>
+        
+        <div class="method-container">
+            <div class="method-name">User Roles</div>
+            <div class="description">
+                <p>The system supports the following user roles:</p>
+                <ul>
+                    <li><strong>Administrator</strong>: Full access to all system functions</li>
+                    <li><strong>Manager</strong>: Access to reports and claim management, but not system settings</li>
+                    <li><strong>CS Agent</strong>: Limited access to claim processing and customer service functions</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">addUser</div>
+            <div class="method-signature">function addUser($username, $password, $email, $role, $firstName, $lastName)</div>
+            <div class="description">
+                <p>Adds a new user to the system.</p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="param-name">$username</td>
+                            <td class="param-type">string</td>
+                            <td>Username for the new user</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$password</td>
+                            <td class="param-type">string</td>
+                            <td>Password for the new user</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$email</td>
+                            <td class="param-type">string</td>
+                            <td>Email address for the new user</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$role</td>
+                            <td class="param-type">string</td>
+                            <td>Role for the new user (admin, manager, cs_agent)</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$firstName</td>
+                            <td class="param-type">string</td>
+                            <td>First name of the new user</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$lastName</td>
+                            <td class="param-type">string</td>
+                            <td>Last name of the new user</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">int</span> - ID of the newly created user
+                </div>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">updateUser</div>
+            <div class="method-signature">function updateUser($id, $username, $email, $role, $firstName, $lastName, $password = null)</div>
+            <div class="description">
+                <p>Updates an existing user's information.</p>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">bool</span> - True on success, false on failure
+                </div>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">deleteUser</div>
+            <div class="method-signature">function deleteUser($id)</div>
+            <div class="description">
+                <p>Deletes a user from the system.</p>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">bool</span> - True on success, false on failure
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="categories">Categories Management</h2>
+        
+        <div class="method-container">
+            <div class="method-name">addCategory</div>
+            <div class="method-signature">function addCategory($name, $description, $slaDays)</div>
+            <div class="description">
+                <p>Adds a new claim category to the system.</p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="param-name">$name</td>
+                            <td class="param-type">string</td>
+                            <td>Name of the category</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$description</td>
+                            <td class="param-type">string</td>
+                            <td>Description of the category</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$slaDays</td>
+                            <td class="param-type">int</td>
+                            <td>Number of days for SLA resolution</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">int</span> - ID of the newly created category
+                </div>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">updateCategory</div>
+            <div class="method-signature">function updateCategory($id, $name, $description, $slaDays)</div>
+            <div class="description">
+                <p>Updates an existing category.</p>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">bool</span> - True on success, false on failure
+                </div>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">deleteCategory</div>
+            <div class="method-signature">function deleteCategory($id)</div>
+            <div class="description">
+                <p>Deletes a category from the system.</p>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">bool</span> - True on success, false on failure
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="dashboard">Dashboard</h2>
+        
+        <div class="method-container">
+            <div class="method-name">Dashboard Components</div>
+            <div class="description">
+                <p>The dashboard provides the following key information:</p>
+                <ul>
+                    <li>Total claims by status (new, in_progress, on_hold, approved, rejected)</li>
+                    <li>Recent claims (last 10)</li>
+                    <li>Claims by category (pie chart)</li>
+                    <li>Claims by month (line chart)</li>
+                    <li>SLA compliance rate</li>
+                    <li>Average resolution time</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">getDashboardStats</div>
+            <div class="method-signature">function getDashboardStats()</div>
+            <div class="description">
+                <p>Retrieves statistics for the dashboard.</p>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">array</span> - Dashboard statistics
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="functions">Core Functions</h2>
+        
+        <div class="method-container">
+            <div class="method-name">checkPermission</div>
+            <div class="method-signature">function checkPermission($permission, $userId = null)</div>
+            <div class="description">
+                <p>Checks if a user has a specific permission.</p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="param-name">$permission</td>
+                            <td class="param-type">string</td>
+                            <td>Permission to check</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$userId</td>
+                            <td class="param-type">int|null</td>
+                            <td>User ID to check permission for (defaults to current user)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">bool</span> - True if user has permission, false otherwise
+                </div>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">getSystemSettings</div>
+            <div class="method-signature">function getSystemSettings()</div>
+            <div class="description">
+                <p>Retrieves all system settings.</p>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">array</span> - System settings
+                </div>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">updateSystemSetting</div>
+            <div class="method-signature">function updateSystemSetting($key, $value)</div>
+            <div class="description">
+                <p>Updates a system setting.</p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="param-name">$key</td>
+                            <td class="param-type">string</td>
+                            <td>Setting key</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$value</td>
+                            <td class="param-type">mixed</td>
+                            <td>Setting value</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">bool</span> - True on success, false on failure
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Simple search functionality
+            $("#search-input").on("keyup", function() {
+                var value = $(this).val().toLowerCase();
+                $(".nav-link").filter(function() {
+                    $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+                });
+            });
+        });
+    </script>
+</body>
+</html>

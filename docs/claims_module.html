@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claims Module - Warranty Management System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap">
+    <style>
+        :root {
+            --primary-color: #5b87a4;
+            --secondary-color: #2e4154;
+            --accent-color: #d35e5e;
+            --light-color: #f5f7f9;
+            --dark-color: #2c3e50;
+            --code-bg: #f8f9fa;
+            --border-color: #e9ecef;
+            --method-color: #e3f2fd;
+            --property-color: #fff3cd;
+            --namespace-color: #d1e7dd;
+        }
+        
+        body {
+            font-family: 'Source Sans Pro', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: var(--light-color);
+        }
+        
+        .navbar {
+            background-color: var(--secondary-color);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: white !important;
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 56px;
+            left: 0;
+            width: 280px;
+            height: calc(100vh - 56px);
+            background-color: white;
+            overflow-y: auto;
+            transition: all 0.3s;
+            z-index: 1000;
+            padding: 0;
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+        }
+        
+        .main-content {
+            margin-left: 280px;
+            padding: 20px 30px;
+            background-color: white;
+            min-height: calc(100vh - 56px);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .nav-item {
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .nav-link {
+            color: var(--dark-color);
+            padding: 0.8rem 1rem;
+            font-size: 0.95rem;
+        }
+        
+        .nav-link:hover {
+            background-color: var(--light-color);
+        }
+        
+        .nav-link.active {
+            background-color: var(--light-color);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        .nav-link .badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            margin-left: 5px;
+        }
+        
+        .section-title {
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        .subsection-title {
+            color: var(--secondary-color);
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        code {
+            background-color: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.9em;
+            color: var(--accent-color);
+        }
+        
+        pre {
+            background-color: var(--code-bg);
+            padding: 1rem;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            overflow-x: auto;
+        }
+        
+        .method-container, .property-container {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .method-container {
+            background-color: var(--method-color);
+        }
+        
+        .property-container {
+            background-color: var(--property-color);
+        }
+        
+        .method-name, .property-name {
+            font-weight: 600;
+            color: var(--secondary-color);
+        }
+        
+        .method-signature {
+            font-family: monospace;
+            padding: 0.5rem;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 3px;
+            margin: 0.5rem 0;
+            overflow-x: auto;
+        }
+        
+        .param-table {
+            width: 100%;
+            margin: 1rem 0;
+        }
+        
+        .param-table th {
+            background-color: rgba(0, 0, 0, 0.05);
+            text-align: left;
+            padding: 0.5rem;
+        }
+        
+        .param-table td {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .param-name {
+            font-family: monospace;
+            font-weight: 600;
+        }
+        
+        .param-type {
+            color: var(--primary-color);
+            font-family: monospace;
+        }
+        
+        .return-value {
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 3px;
+        }
+        
+        .namespace-badge {
+            display: inline-block;
+            background-color: var(--namespace-color);
+            padding: 0.3rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+        }
+        
+        .description {
+            margin-bottom: 1rem;
+        }
+        
+        .breadcrumb {
+            background-color: transparent;
+            padding: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        .breadcrumb-item a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        
+        .breadcrumb-item.active {
+            color: var(--dark-color);
+        }
+        
+        .toc {
+            background-color: var(--light-color);
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 2rem;
+        }
+        
+        .toc-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .toc-list {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        
+        .toc-list li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .toc-list a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        
+        .search-container {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .search-container input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+        }
+        
+        .alert-info {
+            background-color: #e3f2fd;
+            border-color: #b6d4fe;
+            color: #0a58ca;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="index.html">
+                Warranty Management System
+            </a>
+        </div>
+    </nav>
+
+    <div class="sidebar">
+        <div class="search-container">
+            <input type="text" placeholder="Search documentation..." id="search-input">
+        </div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link" href="index.html">
+                    <i class="fas fa-home me-2"></i> Overview
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="modules.html">
+                    <i class="fas fa-cubes me-2"></i> Modules
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="admin_module.html">
+                    <i class="fas fa-user-shield me-2"></i> Admin Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="claims_module.html">
+                    <i class="fas fa-file-alt me-2"></i> Claims Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="reports_module.html">
+                    <i class="fas fa-chart-bar me-2"></i> Reports Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="warranty_rules.html">
+                    <i class="fas fa-gavel me-2"></i> Warranty Rules
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="database_schema.html">
+                    <i class="fas fa-database me-2"></i> Database Schema
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="api_reference.html">
+                    <i class="fas fa-code me-2"></i> API Reference
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <div class="main-content">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="index.html">Home</a></li>
+                <li class="breadcrumb-item"><a href="modules.html">Modules</a></li>
+                <li class="breadcrumb-item active">Claims Module</li>
+            </ol>
+        </nav>
+
+        <h1 class="section-title">Claims Module</h1>
+        
+        <div class="namespace-badge">
+            <i class="fas fa-folder me-1"></i> WarrantySystem\Claims
+        </div>
+        
+        <div class="description">
+            <p>The Claims Module is the core component of the Warranty Management System, handling the submission, processing, and tracking of warranty claims. This module provides functionality for creating new claims, updating claim status, assigning claims to agents, and managing claim-related files.</p>
+        </div>
+        
+        <div class="toc">
+            <div class="toc-title">Table of Contents</div>
+            <ul class="toc-list">
+                <li><a href="#overview">Module Overview</a></li>
+                <li><a href="#files">Key Files</a></li>
+                <li><a href="#functions">Core Functions</a></li>
+                <li><a href="#validation">Claim Validation</a></li>
+                <li><a href="#file-uploads">File Upload Requirements</a></li>
+                <li><a href="#database">Database Interactions</a></li>
+            </ul>
+        </div>
+        
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Important:</strong> Based on system memory, the Claims Module has been updated to prevent duplicate claims for the same order ID and SKU combination, ensure proper customer information storage, and validate file uploads according to size and format requirements.
+        </div>
+        
+        <h2 class="subsection-title" id="overview">Module Overview</h2>
+        <p>The Claims Module allows users to create, view, and manage warranty claims. It integrates with the ODIN API for order lookups and provides a comprehensive interface for handling the entire claim lifecycle.</p>
+        
+        <h2 class="subsection-title" id="files">Key Files</h2>
+        
+        <div class="method-container">
+            <div class="method-name">claims.php</div>
+            <div class="method-signature">Path: /admin/claims.php</div>
+            <div class="description">
+                <p>Main file for claim management. Handles claim listing, creation, and basic operations.</p>
+                <p>This file includes functionality for:</p>
+                <ul>
+                    <li>Displaying all claims in a sortable and filterable table</li>
+                    <li>Creating new claims through a modal form</li>
+                    <li>Validating claim data</li>
+                    <li>Processing file uploads</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">view_claim.php</div>
+            <div class="method-signature">Path: /admin/view_claim.php</div>
+            <div class="description">
+                <p>Detailed view of a single claim. Provides complete information about a claim and allows status updates.</p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">edit_claim.php</div>
+            <div class="method-signature">Path: /admin/edit_claim.php</div>
+            <div class="description">
+                <p>Allows editing of existing claims. Provides form for updating claim details.</p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">assign_claim.php</div>
+            <div class="method-signature">Path: /admin/assign_claim.php</div>
+            <div class="description">
+                <p>Handles claim assignment to CS Agents. Processes assignment requests and updates claim records.</p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">add_claim_note.php</div>
+            <div class="method-signature">Path: /admin/add_claim_note.php</div>
+            <div class="description">
+                <p>Adds notes to claims for documentation purposes. Records notes and status changes in the claim_notes table.</p>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="functions">Core Functions</h2>
+        
+        <div class="method-container">
+            <div class="method-name">createClaim</div>
+            <div class="method-signature">function createClaim($orderId, $customerName, $customerEmail, $customerPhone, $deliveryDate, $userId, $items)</div>
+            <div class="description">
+                <p>Creates a new warranty claim in the database.</p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="param-name">$orderId</td>
+                            <td class="param-type">string</td>
+                            <td>The order ID for the claim</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$customerName</td>
+                            <td class="param-type">string</td>
+                            <td>Customer's full name</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$customerEmail</td>
+                            <td class="param-type">string</td>
+                            <td>Customer's email address</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$customerPhone</td>
+                            <td class="param-type">string</td>
+                            <td>Customer's phone number</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$deliveryDate</td>
+                            <td class="param-type">string</td>
+                            <td>Date of order delivery (used as order date)</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$userId</td>
+                            <td class="param-type">int</td>
+                            <td>ID of the user creating the claim</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$items</td>
+                            <td class="param-type">array</td>
+                            <td>Array of items included in the claim</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">int</span> - The ID of the newly created claim
+                </div>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">updateClaimStatus</div>
+            <div class="method-signature">function updateClaimStatus($claimId, $status, $note, $userId)</div>
+            <div class="description">
+                <p>Updates the status of a claim and adds a note about the status change.</p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="param-name">$claimId</td>
+                            <td class="param-type">int</td>
+                            <td>ID of the claim to update</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$status</td>
+                            <td class="param-type">string</td>
+                            <td>New status for the claim (new, in_progress, on_hold, approved, rejected)</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$note</td>
+                            <td class="param-type">string</td>
+                            <td>Note explaining the status change</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$userId</td>
+                            <td class="param-type">int</td>
+                            <td>ID of the user updating the status</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">bool</span> - True on success, false on failure
+                </div>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">assignClaim</div>
+            <div class="method-signature">function assignClaim($claimId, $userId, $assignedBy)</div>
+            <div class="description">
+                <p>Assigns a claim to a specific CS Agent for processing.</p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="param-name">$claimId</td>
+                            <td class="param-type">int</td>
+                            <td>ID of the claim to assign</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$userId</td>
+                            <td class="param-type">int</td>
+                            <td>ID of the user to assign the claim to</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">$assignedBy</td>
+                            <td class="param-type">int</td>
+                            <td>ID of the user making the assignment</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">bool</span> - True on success, false on failure
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="validation">Claim Validation</h2>
+        <p>The Claims Module includes validation to ensure all required information is provided and meets system requirements:</p>
+        
+        <div class="method-container">
+            <div class="method-name">validateClaimData</div>
+            <div class="method-signature">function validateClaimData($data)</div>
+            <div class="description">
+                <p>Validates claim data before submission to ensure it meets all requirements.</p>
+                <p>Validation checks include:</p>
+                <ul>
+                    <li>Customer information (name, email, phone) is complete</li>
+                    <li>At least one item is selected</li>
+                    <li>Each selected item has a category and description</li>
+                    <li>No duplicate claims for the same order ID and SKU combination</li>
+                </ul>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">array</span> - Array with 'valid' (bool) and 'errors' (array) keys
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="file-uploads">File Upload Requirements</h2>
+        <p>The Claims Module supports file uploads for claim documentation with the following restrictions:</p>
+        
+        <div class="method-container">
+            <div class="method-name">validateFileUpload</div>
+            <div class="method-signature">function validateFileUpload($file, $type)</div>
+            <div class="description">
+                <p>Validates file uploads to ensure they meet size and format requirements.</p>
+                <p>File upload restrictions:</p>
+                <ul>
+                    <li><strong>Images</strong>: Maximum size of 2MB</li>
+                    <li><strong>Videos</strong>: Maximum size of 10MB, restricted to MP4 and MOV formats only</li>
+                </ul>
+                <p>Client-side validation is implemented to catch errors before form submission, and server-side validation prevents invalid files from being saved.</p>
+                
+                <div class="return-value">
+                    <strong>Returns:</strong> <span class="param-type">array</span> - Array with 'valid' (bool) and 'error' (string) keys
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="database">Database Interactions</h2>
+        <p>The Claims Module interacts with the following database tables:</p>
+        
+        <div class="method-container">
+            <div class="method-name">claims</div>
+            <div class="description">
+                <p>Stores the main claim information including:</p>
+                <ul>
+                    <li>Claim ID</li>
+                    <li>Order ID</li>
+                    <li>Customer information (name, email, phone)</li>
+                    <li>Delivery date</li>
+                    <li>Status</li>
+                    <li>Created/updated timestamps</li>
+                    <li>Created by (user ID)</li>
+                    <li>Assigned to (user ID)</li>
+                    <li>Claim number</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">claim_items</div>
+            <div class="description">
+                <p>Stores information about individual items in a claim:</p>
+                <ul>
+                    <li>Item ID</li>
+                    <li>Claim ID (foreign key to claims table)</li>
+                    <li>SKU</li>
+                    <li>Product name</li>
+                    <li>Product type</li>
+                    <li>Description of the issue</li>
+                    <li>Category ID (foreign key to claim_categories table)</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">claim_media</div>
+            <div class="description">
+                <p>Stores information about files uploaded for claims:</p>
+                <ul>
+                    <li>Media ID</li>
+                    <li>Claim ID (foreign key to claims table)</li>
+                    <li>File path</li>
+                    <li>File type (photo, video)</li>
+                    <li>Original filename</li>
+                    <li>File size</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">claim_notes</div>
+            <div class="description">
+                <p>Stores notes and status changes for claims:</p>
+                <ul>
+                    <li>Note ID</li>
+                    <li>Claim ID (foreign key to claims table)</li>
+                    <li>Note text</li>
+                    <li>Status changed flag</li>
+                    <li>Old status</li>
+                    <li>New status</li>
+                    <li>Created by (user ID)</li>
+                    <li>Created at timestamp</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Simple search functionality
+            $("#search-input").on("keyup", function() {
+                var value = $(this).val().toLowerCase();
+                $(".nav-link").filter(function() {
+                    $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+                });
+            });
+        });
+    </script>
+</body>
+</html>

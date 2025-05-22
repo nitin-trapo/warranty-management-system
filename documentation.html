@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warranty Management System Documentation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap">
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --light-color: #ecf0f1;
+            --dark-color: #34495e;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding-top: 56px;
+        }
+        
+        .navbar {
+            background-color: var(--secondary-color);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: white !important;
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 56px;
+            left: 0;
+            width: 280px;
+            height: calc(100vh - 56px);
+            background-color: var(--light-color);
+            overflow-y: auto;
+            transition: all 0.3s;
+            z-index: 1000;
+            padding: 20px 0;
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+        }
+        
+        .sidebar.collapsed {
+            margin-left: -280px;
+        }
+        
+        .sidebar .nav-link {
+            color: var(--dark-color);
+            border-left: 3px solid transparent;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+        
+        .sidebar .nav-link:hover {
+            color: var(--primary-color);
+            background-color: rgba(52, 152, 219, 0.1);
+        }
+        
+        .sidebar .nav-link.active {
+            color: var(--primary-color);
+            border-left-color: var(--primary-color);
+            font-weight: bold;
+        }
+        
+        .sidebar .nav-link.sub-item {
+            padding-left: 2rem;
+            font-size: 0.85rem;
+        }
+        
+        .main-content {
+            margin-left: 280px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+        
+        .main-content.expanded {
+            margin-left: 0;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding-top: 20px;
+        }
+        
+        .section h2 {
+            color: var(--secondary-color);
+            border-bottom: 2px solid var(--light-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .section h3 {
+            color: var(--primary-color);
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        
+        .search-container {
+            position: relative;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: var(--light-color);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .floating-search {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            max-width: 90%;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            z-index: 2000;
+            padding: 15px 20px;
+            display: none;
+        }
+        
+        .floating-search .search-container {
+            margin-bottom: 0;
+            padding: 0;
+            background-color: transparent;
+            border-radius: 0;
+            box-shadow: none;
+        }
+        
+        .floating-search .search-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1999;
+        }
+        
+        .floating-search .search-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .floating-search .search-title {
+            font-weight: bold;
+            font-size: 1rem;
+            margin: 0;
+            flex-grow: 1;
+        }
+        
+        .floating-search .close-search {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+        
+        .floating-search .close-search:hover {
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .search-container input {
+            width: 100%;
+            padding: 12px 45px 12px 15px;
+            border: 1px solid #c4c9cc;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+        }
+        
+        .search-container input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.25);
+            outline: none;
+        }
+        
+        .search-container i {
+            position: absolute;
+            right: 25px;
+            top: 27px;
+            color: var(--primary-color);
+            font-size: 1.1rem;
+        }
+        
+        .search-container .search-info {
+            display: block;
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 5px;
+            text-align: right;
+        }
+        
+        .keyboard-shortcut {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 5px;
+        }
+        
+        .key {
+            display: inline-block;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            padding: 1px 6px;
+            font-size: 0.7rem;
+            font-family: monospace;
+            margin: 0 2px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+            color: #333;
+        }
+        
+        .search-results {
+            display: none;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            max-height: 400px;
+            overflow-y: auto;
+            position: absolute;
+            width: 100%;
+            left: 0;
+            top: calc(100% + 5px);
+            z-index: 1000;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .floating-search .search-results {
+            position: relative;
+            top: 0;
+            margin-top: 10px;
+            max-height: 60vh;
+        }
+        
+        .search-results a {
+            display: block;
+            padding: 12px 15px;
+            color: #333;
+            text-decoration: none;
+            border-bottom: 1px solid #eee;
+            transition: all 0.2s ease;
+        }
+        
+        .search-results a:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+            padding-left: 20px;
+        }
+        
+        .search-results .highlight {
+            background-color: rgba(255, 230, 0, 0.5);
+            font-weight: bold;
+            padding: 2px 0;
+            border-radius: 2px;
+        }
+        
+        .search-results .result-category {
+            font-size: 0.75rem;
+            color: var(--primary-color);
+            display: block;
+            margin-bottom: 3px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .search-results .no-results {
+            padding: 15px;
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .search-results .result-count {
+            background-color: var(--light-color);
+            padding: 8px 15px;
+            font-size: 0.85rem;
+            color: var(--dark-color);
+            border-bottom: 1px solid #ddd;
+            font-weight: bold;
+        }
+        
+        .toggle-sidebar {
+            cursor: pointer;
+            margin-right: 15px;
+            color: white;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                margin-left: -280px;
+            }
+            
+            .sidebar.collapsed {
+                margin-left: 0;
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .main-content.expanded {
+                margin-left: 280px;
+            }
+        }
+        
+        code {
+            background-color: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 4px;
+            color: var(--accent-color);
+        }
+        
+        .alert-tip {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-warning {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+        }
+        
+        th {
+            background-color: var(--light-color);
+            color: var(--dark-color);
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .back-to-top {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: var(--primary-color);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        
+        .back-to-top.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+        <div class="container-fluid">
+            <span class="toggle-sidebar">
+                <i class="fas fa-bars"></i>
+            </span>
+            <a class="navbar-brand" href="#">Warranty Management System Documentation</a>
+            <div class="ms-auto d-flex">
+            </div>
+        </div>
+    </nav>
+    
+    <div class="floating-search" id="floatingSearch">
+        <div class="search-overlay" id="searchOverlay"></div>
+        <div class="search-header">
+            <h5 class="search-title">Search Documentation</h5>
+            <button class="close-search" id="closeSearch">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="search-container">
+            <input type="text" id="globalSearchInput" placeholder="Type to search..." autocomplete="off">
+            <i class="fas fa-search"></i>
+            <div class="search-results" id="globalSearchResults"></div>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <div class="search-container">
+            <input type="text" id="sidebarSearchInput" placeholder="Search documentation..." autocomplete="off">
+            <i class="fas fa-search"></i>
+            <div class="search-results" id="sidebarSearchResults"></div>
+        </div>
+        <nav class="nav flex-column">
+            <a class="nav-link" href="#introduction">Introduction</a>
+            
+            <a class="nav-link" href="#getting-started">Getting Started</a>
+            <a class="nav-link sub-item" href="#system-requirements">System Requirements</a>
+            <a class="nav-link sub-item" href="#login">Login</a>
+            <a class="nav-link sub-item" href="#user-roles">User Roles</a>
+            
+            <a class="nav-link" href="#dashboard">Dashboard</a>
+            <a class="nav-link sub-item" href="#overview">Overview</a>
+            <a class="nav-link sub-item" href="#time-period-filtering">Time Period Filtering</a>
+            <a class="nav-link sub-item" href="#key-statistics">Key Statistics</a>
+            
+            <a class="nav-link" href="#claims-management">Claims Management</a>
+            <a class="nav-link sub-item" href="#viewing-claims">Viewing Claims</a>
+            <a class="nav-link sub-item" href="#creating-new-claims">Creating New Claims</a>
+            <a class="nav-link sub-item" href="#claim-validation">Claim Validation</a>
+            <a class="nav-link sub-item" href="#updating-claim-status">Updating Claim Status</a>
+            <a class="nav-link sub-item" href="#assigning-claims">Assigning Claims</a>
+            <a class="nav-link sub-item" href="#adding-notes">Adding Notes</a>
+            <a class="nav-link sub-item" href="#file-upload-requirements">File Upload Requirements</a>
+            
+            <a class="nav-link" href="#reports">Reports</a>
+            <a class="nav-link sub-item" href="#claim-performance-report">Claim Performance Report</a>
+            <a class="nav-link sub-item" href="#sku-analysis-report">SKU Analysis Report</a>
+            <a class="nav-link sub-item" href="#product-type-analysis">Product Type Analysis</a>
+            <a class="nav-link sub-item" href="#category-analysis">Category Analysis</a>
+            <a class="nav-link sub-item" href="#exporting-reports">Exporting Reports</a>
+            
+            <a class="nav-link" href="#user-management">User Management</a>
+            <a class="nav-link" href="#categories-management">Categories Management</a>
+            <a class="nav-link" href="#warranty-rules">Warranty Rules Management</a>
+            <a class="nav-link sub-item" href="#viewing-warranty-rules">Viewing Warranty Rules</a>
+            <a class="nav-link sub-item" href="#adding-warranty-rules">Adding New Rules</a>
+            <a class="nav-link sub-item" href="#editing-warranty-rules">Editing Rules</a>
+            <a class="nav-link sub-item" href="#deleting-warranty-rules">Deleting Rules</a>
+            <a class="nav-link sub-item" href="#using-warranty-rules">Using Warranty Rules</a>
+            <a class="nav-link" href="#notifications">Notifications</a>
+            <a class="nav-link" href="#troubleshooting">Troubleshooting</a>
+            <a class="nav-link" href="#appendix">Appendix</a>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <div class="section" id="introduction">
+            <h2>Introduction</h2>
+            <p>The Warranty Management System is a comprehensive web-based application designed to streamline the process of handling warranty claims. It provides tools for claim submission, tracking, reporting, and analysis, helping organizations efficiently manage their warranty service operations.</p>
+            
+            <p>Key features include:</p>
+            <ul>
+                <li>Centralized claim management</li>
+                <li>Automated workflow for claim processing</li>
+                <li>Comprehensive reporting and analytics</li>
+                <li>File attachment support for claim documentation</li>
+                <li>User role-based access control</li>
+                <li>Email notifications</li>
+                <li>SLA (Service Level Agreement) tracking</li>
+            </ul>
+        </div>
+
+        <div class="section" id="getting-started">
+            <h2>Getting Started</h2>
+            
+            <div id="system-requirements">
+                <h3>System Requirements</h3>
+                <ul>
+                    <li>Web server with PHP 7.4 or higher</li>
+                    <li>MySQL 5.7 or higher</li>
+                    <li>Modern web browser (Chrome, Firefox, Safari, Edge)</li>
+                    <li>JavaScript enabled</li>
+                </ul>
+            </div>
+            
+            <div id="login">
+                <h3>Login</h3>
+                <ol>
+                    <li>Navigate to the system URL in your web browser</li>
+                    <li>Enter your username and password</li>
+                    <li>Click "Login"</li>
+                </ol>
+                <p>If you've forgotten your password, contact your system administrator for assistance.</p>
+            </div>
+            
+            <div id="user-roles">
+                <h3>User Roles</h3>
+                <p>The system supports multiple user roles with different permissions:</p>
+                <ul>
+                    <li><strong>Administrator</strong>: Full access to all system features</li>
+                    <li><strong>Product Admin</strong>: Can manage claims and approve/reject them</li>
+                    <li><strong>CS Agent</strong>: Can create and process claims</li>
+                    <li><strong>Approver</strong>: Can review and approve/reject claims</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section" id="dashboard">
+            <h2>Dashboard</h2>
+            
+            <div id="overview">
+                <h3>Overview</h3>
+                <p>The dashboard provides a quick overview of the warranty claim system's current status and key metrics. It's designed to give users immediate insights into claim activity and performance.</p>
+            </div>
+            
+            <div id="time-period-filtering">
+                <h3>Time Period Filtering</h3>
+                <p>The dashboard data can be filtered by different time periods:</p>
+                <ul>
+                    <li>This Week</li>
+                    <li>This Month</li>
+                    <li>This Year (default)</li>
+                </ul>
+                <p>Use the dropdown in the Claims Overview section to change the time period.</p>
+            </div>
+            
+            <div id="key-statistics">
+                <h3>Key Statistics</h3>
+                <p>The dashboard displays several key statistics:</p>
+                <ul>
+                    <li>Total Claims</li>
+                    <li>New Claims</li>
+                    <li>In Progress Claims</li>
+                    <li>On Hold Claims</li>
+                    <li>Resolved Claims</li>
+                    <li>Rejected Claims</li>
+                    <li>SLA Breaches</li>
+                    <li>Claims by Category</li>
+                    <li>Claims by Product Type</li>
+                    <li>Monthly Claim Trends</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section" id="claims-management">
+            <h2>Claims Management</h2>
+            
+            <div id="viewing-claims">
+                <h3>Viewing Claims</h3>
+                <p>The Claims Management page displays all warranty claims in a sortable and filterable table. You can:</p>
+                <ul>
+                    <li>Search for specific claims</li>
+                    <li>Sort by any column</li>
+                    <li>Filter by status</li>
+                    <li>View claim details</li>
+                </ul>
+            </div>
+            
+            <div id="creating-new-claims">
+                <h3>Creating New Claims</h3>
+                <p>To create a new warranty claim:</p>
+                <ol>
+                    <li>Click the "Add New Claim" button</li>
+                    <li>Enter the Order ID and click "Look Up Order"</li>
+                    <li>Verify customer information (name, email, phone)</li>
+                    <li>Select the items to include in the claim by checking the checkboxes</li>
+                    <li>For each selected item:
+                        <ul>
+                            <li>Choose the claim category</li>
+                            <li>Enter a detailed description of the issue</li>
+                            <li>Upload supporting files (photos/videos)</li>
+                        </ul>
+                    </li>
+                    <li>Click "Submit Claim"</li>
+                </ol>
+            </div>
+            
+            <div id="claim-validation">
+                <h3>Claim Validation</h3>
+                <p>The system validates claims to ensure all required information is provided:</p>
+                <ul>
+                    <li>Customer information (name, email, phone) must be complete</li>
+                    <li>At least one item must be selected</li>
+                    <li>Each selected item must have a category and description</li>
+                    <li>File uploads must meet size and format requirements</li>
+                    <li>Duplicate claims for the same order ID and SKU combination are prevented</li>
+                </ul>
+            </div>
+            
+            <div id="updating-claim-status">
+                <h3>Updating Claim Status</h3>
+                <p>Claims can have the following statuses:</p>
+                <ul>
+                    <li>New</li>
+                    <li>In Progress</li>
+                    <li>On Hold</li>
+                    <li>Approved</li>
+                    <li>Rejected</li>
+                </ul>
+                <p>To update a claim's status:</p>
+                <ol>
+                    <li>Click on the claim to view details</li>
+                    <li>Select the new status from the dropdown</li>
+                    <li>Add a note explaining the status change</li>
+                    <li>Click "Update Status"</li>
+                </ol>
+            </div>
+            
+            <div id="assigning-claims">
+                <h3>Assigning Claims</h3>
+                <p>Claims can be assigned to specific CS Agents for processing:</p>
+                <ol>
+                    <li>Click the "Assign" button for a claim</li>
+                    <li>Select a user from the dropdown</li>
+                    <li>Click "Assign"</li>
+                </ol>
+            </div>
+            
+            <div id="adding-notes">
+                <h3>Adding Notes</h3>
+                <p>Notes can be added to claims to document the claim processing:</p>
+                <ol>
+                    <li>Navigate to the claim details page</li>
+                    <li>Enter your note in the text area</li>
+                    <li>Click "Add Note"</li>
+                </ol>
+            </div>
+            
+            <div id="file-upload-requirements">
+                <h3>File Upload Requirements</h3>
+                <p>When uploading files for claims, the following restrictions apply:</p>
+                <ul>
+                    <li><strong>Images</strong>: Maximum size of 2MB</li>
+                    <li><strong>Videos</strong>: Maximum size of 10MB, restricted to MP4 and MOV formats only</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section" id="reports">
+            <h2>Reports</h2>
+            <p>The system provides several reports to analyze warranty claim data.</p>
+            
+            <div id="claim-performance-report">
+                <h3>Claim Performance Report</h3>
+                <p>This report shows:</p>
+                <ul>
+                    <li>Claims by status</li>
+                    <li>Average resolution time</li>
+                    <li>SLA compliance rate</li>
+                    <li>Escalated claims (exceeding SLA)</li>
+                </ul>
+            </div>
+            
+            <div id="sku-analysis-report">
+                <h3>SKU Analysis Report</h3>
+                <p>This report shows:</p>
+                <ul>
+                    <li>Most claimed SKUs</li>
+                    <li>Claims by category for each SKU</li>
+                    <li>Claim rate by SKU</li>
+                </ul>
+            </div>
+            
+            <div id="product-type-analysis">
+                <h3>Product Type Analysis</h3>
+                <p>This report shows:</p>
+                <ul>
+                    <li>Most claimed product types</li>
+                    <li>Claims by category for each product type</li>
+                </ul>
+            </div>
+            
+            <div id="category-analysis">
+                <h3>Category Analysis</h3>
+                <p>This report shows:</p>
+                <ul>
+                    <li>Claims by category</li>
+                    <li>SLA days for each category</li>
+                    <li>Monthly breakdown of claims by category</li>
+                </ul>
+            </div>
+            
+            <div id="exporting-reports">
+                <h3>Exporting Reports</h3>
+                <p>All reports can be exported to Excel format:</p>
+                <ol>
+                    <li>Navigate to the desired report</li>
+                    <li>Click the "Excel" button</li>
+                    <li>The report will be downloaded with the date range in the filename</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="section" id="user-management">
+            <h2>User Management</h2>
+            <p>Administrators can manage system users:</p>
+            <ul>
+                <li>Add new users</li>
+                <li>Edit existing users</li>
+                <li>Deactivate users</li>
+                <li>Assign user roles</li>
+            </ul>
+            <p>To access User Management:</p>
+            <ol>
+                <li>Navigate to the Admin menu</li>
+                <li>Select "Users"</li>
+            </ol>
+        </div>
+
+        <div class="section" id="categories-management">
+            <h2>Categories Management</h2>
+            <p>Claim categories can be managed by administrators:</p>
+            <ul>
+                <li>Add new categories</li>
+                <li>Edit existing categories</li>
+                <li>Set SLA days for each category</li>
+            </ul>
+            <p>To access Categories Management:</p>
+            <ol>
+                <li>Navigate to the Admin menu</li>
+                <li>Select "Categories"</li>
+            </ol>
+        </div>
+
+        <div class="section" id="warranty-rules">
+            <h2>Warranty Rules Management</h2>
+            <p>The Warranty Rules Management module allows administrators to define and manage warranty policies for different product types. This ensures consistent application of warranty terms across all claims.</p>
+            
+            <div id="viewing-warranty-rules">
+                <h3>Viewing Warranty Rules</h3>
+                <p>The Warranty Rules page displays all defined warranty policies in a sortable and filterable table. Each rule includes:</p>
+                <ul>
+                    <li>Product Type</li>
+                    <li>Warranty Duration (in months)</li>
+                    <li>Coverage Details</li>
+                    <li>Exclusions</li>
+                    <li>Creation/Update Information</li>
+                </ul>
+            </div>
+            
+            <div id="adding-warranty-rules">
+                <h3>Adding New Warranty Rules</h3>
+                <p>To add a new warranty rule:</p>
+                <ol>
+                    <li>Click the "Add New Rule" button</li>
+                    <li>Enter the following information:
+                        <ul>
+                            <li>Product Type (must be unique)</li>
+                            <li>Duration (in months)</li>
+                            <li>Coverage Details (what is covered under warranty)</li>
+                            <li>Exclusions (what is not covered under warranty)</li>
+                        </ul>
+                    </li>
+                    <li>Click "Save Rule"</li>
+                </ol>
+            </div>
+            
+            <div id="editing-warranty-rules">
+                <h3>Editing Warranty Rules</h3>
+                <p>To edit an existing warranty rule:</p>
+                <ol>
+                    <li>Click the "Edit" button for the rule you want to modify</li>
+                    <li>Update the information as needed</li>
+                    <li>Click "Update Rule"</li>
+                </ol>
+            </div>
+            
+            <div id="deleting-warranty-rules">
+                <h3>Deleting Warranty Rules</h3>
+                <p>To delete a warranty rule:</p>
+                <ol>
+                    <li>Click the "Delete" button for the rule you want to remove</li>
+                    <li>Confirm the deletion when prompted</li>
+                </ol>
+            </div>
+            
+            <div id="using-warranty-rules">
+                <h3>Using Warranty Rules</h3>
+                <p>Warranty rules are used during the claim processing workflow to:</p>
+                <ul>
+                    <li>Verify if a product is still under warranty based on its delivery date</li>
+                    <li>Determine what types of issues are covered</li>
+                    <li>Provide guidelines for approving or rejecting claims</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section" id="notifications">
+            <h2>Notifications</h2>
+            <p>The system sends email notifications for various events:</p>
+            <ul>
+                <li>New claim submission</li>
+                <li>Claim status updates</li>
+                <li>SLA breaches</li>
+                <li>Claim assignments</li>
+            </ul>
+            <p>Users can view their notifications in the system by clicking the bell icon in the top navigation bar.</p>
+        </div>
+
+        <div class="section" id="troubleshooting">
+            <h2>Troubleshooting</h2>
+            
+            <h3>Common Issues</h3>
+            
+            <h4>1. File Upload Errors</h4>
+            <ul>
+                <li>Ensure files meet the size and format requirements</li>
+                <li>Check that the upload directory has proper permissions</li>
+            </ul>
+            
+            <h4>2. Order Lookup Failures</h4>
+            <ul>
+                <li>Verify the order ID is correct</li>
+                <li>Check the system's connection to the order database</li>
+            </ul>
+            
+            <h4>3. Email Notification Issues</h4>
+            <ul>
+                <li>Verify email settings in the system configuration</li>
+                <li>Check spam folders for missed notifications</li>
+            </ul>
+            
+            <h3>Support</h3>
+            <p>For additional support, contact your system administrator or IT department.</p>
+        </div>
+
+        <div class="section" id="appendix">
+            <h2>Appendix</h2>
+            
+            <h3>Glossary</h3>
+            <ul>
+                <li><strong>Claim</strong>: A warranty service request submitted by a customer</li>
+                <li><strong>SLA (Service Level Agreement)</strong>: The timeframe within which a claim should be resolved</li>
+                <li><strong>SKU (Stock Keeping Unit)</strong>: A unique identifier for a product</li>
+                <li><strong>CS Agent</strong>: Customer Service Agent responsible for processing claims</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="back-to-top">
+        <i class="fas fa-arrow-up"></i>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Toggle sidebar
+            $('.toggle-sidebar').click(function() {
+                $('.sidebar').toggleClass('collapsed');
+                $('.main-content').toggleClass('expanded');
+            });
+            
+            // Dark mode toggle
+            $('#darkModeToggle').change(function() {
+                if(this.checked) {
+                    $('body').addClass('dark-mode');
+                    localStorage.setItem('darkMode', 'enabled');
+                } else {
+                    $('body').removeClass('dark-mode');
+                    localStorage.setItem('darkMode', 'disabled');
+                }
+            });
+            
+            // Check for saved dark mode preference
+            if(localStorage.getItem('darkMode') === 'enabled') {
+                $('body').addClass('dark-mode');
+                $('#darkModeToggle').prop('checked', true);
+            }
+            
+            // Smooth scrolling for anchor links
+            $('a[href^="#"]').on('click', function(e) {
+                e.preventDefault();
+                
+                var target = this.hash;
+                var $target = $(target);
+                
+                $('html, body').animate({
+                    'scrollTop': $target.offset().top - 70
+                }, 500, 'swing');
+            });
+            
+            // Back to top button
+            $(window).scroll(function() {
+                if ($(this).scrollTop() > 300) {
+                    $('.back-to-top').addClass('visible');
+                } else {
+                    $('.back-to-top').removeClass('visible');
+                }
+            });
+            
+            $('.back-to-top').click(function() {
+                $('html, body').animate({scrollTop: 0}, 500);
+                return false;
+            });
+            
+            // Active link highlighting
+            function setActiveLink() {
+                var scrollPosition = $(document).scrollTop();
+                
+                $('.nav-link').each(function() {
+                    var currentLink = $(this);
+                    var refElement = $(currentLink.attr('href'));
+                    
+                    if (refElement.position().top - 100 <= scrollPosition && 
+                        refElement.position().top + refElement.height() > scrollPosition) {
+                        $('.nav-link').removeClass('active');
+                        currentLink.addClass('active');
+                    } else {
+                        currentLink.removeClass('active');
+                    }
+                });
+            }
+            
+            $(document).on('scroll', function() {
+                setActiveLink();
+            });
+            
+            // Search functionality
+            const sidebarSearchInput = document.getElementById('sidebarSearchInput');
+            const sidebarSearchResults = document.getElementById('sidebarSearchResults');
+            const globalSearchInput = document.getElementById('globalSearchInput');
+            const globalSearchResults = document.getElementById('globalSearchResults');
+            const globalSearchButton = document.getElementById('globalSearchButton');
+            const floatingSearch = document.getElementById('floatingSearch');
+            const searchOverlay = document.getElementById('searchOverlay');
+            const closeSearch = document.getElementById('closeSearch');
+            
+            // Build search index
+            const searchIndex = [];
+            
+            // Define categories for better organization
+            const categories = {
+                'h2': 'Main Section',
+                'h3': 'Sub-Section',
+                'h4': 'Topic',
+                'p': 'Content',
+                'li': 'List Item'
+            };
+            
+            // Add all headings to search index
+            $('h2, h3, h4').each(function() {
+                const id = $(this).closest('.section, div[id]').attr('id');
+                const text = $(this).text();
+                const parentSection = $(this).closest('.section').find('h2').first().text() || '';
+                
+                if (id && text) {
+                    searchIndex.push({
+                        id: id,
+                        text: text,
+                        type: this.tagName.toLowerCase(),
+                        section: parentSection
+                    });
+                }
+            });
+            
+            // Add all paragraphs to search index
+            $('p').each(function() {
+                const id = $(this).closest('.section, div[id]').attr('id');
+                const text = $(this).text();
+                const parentSection = $(this).closest('.section').find('h2').first().text() || '';
+                
+                if (id && text) {
+                    searchIndex.push({
+                        id: id,
+                        text: text,
+                        type: 'p',
+                        section: parentSection
+                    });
+                }
+            });
+            
+            // Add all list items to search index
+            $('li').each(function() {
+                const id = $(this).closest('.section, div[id]').attr('id');
+                const text = $(this).text();
+                const parentSection = $(this).closest('.section').find('h2').first().text() || '';
+                
+                if (id && text) {
+                    searchIndex.push({
+                        id: id,
+                        text: text,
+                        type: 'li',
+                        section: parentSection
+                    });
+                }
+            });
+            
+
+            
+            // Function to perform search with a specific input and results element
+            function performSearch(input, resultsElement) {
+                const query = input.value.toLowerCase().trim();
+                
+                if (query.length < 2) {
+                    resultsElement.style.display = 'none';
+                    return;
+                }
+                
+                // Score results based on relevance
+                const scoredResults = searchIndex.map(item => {
+                    // Calculate score based on various factors
+                    let score = 0;
+                    
+                    // Exact match gets highest score
+                    if (item.text.toLowerCase() === query) {
+                        score += 100;
+                    }
+                    // Title/heading matches get higher score
+                    else if (item.text.toLowerCase().includes(query)) {
+                        score += 50;
+                        
+                        // Bonus for heading matches
+                        if (item.type === 'h2') score += 30;
+                        if (item.type === 'h3') score += 20;
+                        if (item.type === 'h4') score += 10;
+                        
+                        // Bonus for matches at start of text
+                        if (item.text.toLowerCase().startsWith(query)) {
+                            score += 15;
+                        }
+                        
+                        // Bonus for shorter texts (more precise matches)
+                        if (item.text.length < 50) {
+                            score += 10;
+                        }
+                    }
+                    // Word boundary matches
+                    const words = item.text.toLowerCase().split(/\s+/);
+                    if (words.some(word => word === query)) {
+                        score += 25;
+                    }
+                    
+                    return {
+                        ...item,
+                        score: score
+                    };
+                }).filter(item => item.score > 0)
+                  .sort((a, b) => b.score - a.score);
+                
+                if (scoredResults.length > 0) {
+                    resultsElement.innerHTML = '';
+                    
+                    // Add result count header
+                    const resultCountDiv = document.createElement('div');
+                    resultCountDiv.className = 'result-count';
+                    resultCountDiv.textContent = `Found ${scoredResults.length} results for "${query}"`;
+                    resultsElement.appendChild(resultCountDiv);
+                    
+                    // Limit to top 15 results
+                    const limitedResults = scoredResults.slice(0, 15);
+                    
+                    limitedResults.forEach(result => {
+                        const a = document.createElement('a');
+                        a.href = `#${result.id}`;
+                        
+                        // Create category label
+                        const categorySpan = document.createElement('span');
+                        categorySpan.className = 'result-category';
+                        categorySpan.textContent = result.section ? `${result.section} › ${categories[result.type]}` : categories[result.type];
+                        
+                        // Highlight the matching text
+                        const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                        const highlightedText = result.text.replace(regex, '<span class="highlight">$1</span>');
+                        
+                        // Truncate long text and add ellipsis
+                        let displayText = highlightedText;
+                        if (result.text.length > 100) {
+                            // Find the position of the first match
+                            const matchPosition = result.text.toLowerCase().indexOf(query);
+                            
+                            // Calculate start position to show context around match
+                            let startPos = Math.max(0, matchPosition - 40);
+                            if (startPos > 0) {
+                                // Find the beginning of a word
+                                while (startPos > 0 && result.text[startPos] !== ' ') {
+                                    startPos--;
+                                }
+                                displayText = '...' + highlightedText.substring(startPos);
+                            }
+                            
+                            // Truncate the end if still too long
+                            if (displayText.length > 150) {
+                                displayText = displayText.substring(0, 150) + '...';
+                            }
+                        }
+                        
+                        a.innerHTML = '';
+                        a.appendChild(categorySpan);
+                        a.insertAdjacentHTML('beforeend', displayText);
+                        
+                        a.addEventListener('click', function() {
+                            resultsElement.style.display = 'none';
+                            if (floatingSearch.style.display === 'block') {
+                                closeFloatingSearch();
+                            }
+                        });
+                        
+                        resultsElement.appendChild(a);
+                    });
+                    
+                    resultsElement.style.display = 'block';
+                } else {
+                    resultsElement.innerHTML = '<div class="result-count">No results found</div><div class="no-results">Try different keywords or check spelling</div>';
+                    resultsElement.style.display = 'block';
+                }
+            }
+            
+            // Function to open floating search
+            function openFloatingSearch() {
+                floatingSearch.style.display = 'block';
+                globalSearchInput.focus();
+                document.body.style.overflow = 'hidden'; // Prevent scrolling
+            }
+            
+            // Function to close floating search
+            function closeFloatingSearch() {
+                floatingSearch.style.display = 'none';
+                globalSearchInput.value = '';
+                globalSearchResults.style.display = 'none';
+                document.body.style.overflow = ''; // Restore scrolling
+            }
+            
+            // Sidebar search input event
+            sidebarSearchInput.addEventListener('input', function() {
+                if (this.value.trim().length >= 2) {
+                    performSearch(sidebarSearchInput, sidebarSearchResults);
+                } else {
+                    sidebarSearchResults.style.display = 'none';
+                }
+            });
+            
+            // Global search input event
+            globalSearchInput.addEventListener('input', function() {
+                if (this.value.trim().length >= 2) {
+                    performSearch(globalSearchInput, globalSearchResults);
+                } else {
+                    globalSearchResults.style.display = 'none';
+                }
+            });
+            
+            // Open floating search with button
+            globalSearchButton.addEventListener('click', function() {
+                openFloatingSearch();
+            });
+            
+            // Close floating search
+            closeSearch.addEventListener('click', function() {
+                closeFloatingSearch();
+            });
+            
+            // Close floating search when clicking overlay
+            searchOverlay.addEventListener('click', function() {
+                closeFloatingSearch();
+            });
+            
+            // Focus on search input with keyboard shortcut (Ctrl+K or Cmd+K)
+            document.addEventListener('keydown', function(e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    openFloatingSearch();
+                } else if (e.key === 'Escape' && floatingSearch.style.display === 'block') {
+                    closeFloatingSearch();
+                }
+            });
+            
+            // Enter key to trigger search
+            sidebarSearchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    performSearch(sidebarSearchInput, sidebarSearchResults);
+                } else if (e.key === 'Escape') {
+                    sidebarSearchInput.value = '';
+                    sidebarSearchResults.style.display = 'none';
+                }
+            });
+            
+            // Enter key for global search
+            globalSearchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    performSearch(globalSearchInput, globalSearchResults);
+                } else if (e.key === 'Escape') {
+                    closeFloatingSearch();
+                }
+            });
+            
+            // Hide sidebar search results when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!sidebarSearchInput.contains(e.target) && !sidebarSearchResults.contains(e.target)) {
+                    sidebarSearchResults.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

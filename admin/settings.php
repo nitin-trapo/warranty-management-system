@@ -48,6 +48,16 @@ $successMessage = '';
 $errorMessage = '';
 $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'email';
 
+// Define available tabs
+$tabs = [
+    'email' => 'Email Notifications',
+    'email_config' => 'Email Configuration',
+    'templates' => 'Email Templates',
+    'debug' => 'Email Debug',
+    'backup' => 'Database Backup',
+    'system' => 'System Operations'
+];
+
 // Include email debugging functionality if needed
 if ($activeTab === 'debug') {
     require_once '../config/email_config.php';
@@ -61,7 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Begin transaction only for operations that need it
         $needsTransaction = isset($_POST['email_settings']) || 
                             isset($_POST['email_config']) || 
-                            isset($_POST['template_settings']);
+                            isset($_POST['template_settings']) ||
+                            isset($_POST['clear_all_claims']);
         
         if ($needsTransaction) {
             $conn->beginTransaction();
@@ -271,6 +282,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $activeTab = 'backup';
         }
         
+        // Clear all claims
+        if (isset($_POST['clear_all_claims']) && isset($_POST['confirm_clear_claims'])) {
+            try {
+                // Start transaction
+                $conn->beginTransaction();
+                
+                // Delete from claim_notes table first (child table)
+                $conn->exec("DELETE FROM claim_notes");
+                
+                // Delete from claim_media table (child table)
+                $conn->exec("DELETE FROM claim_media");
+                
+                // Delete from claim_items table (child table)
+                $conn->exec("DELETE FROM claim_items");
+                
+                // Finally delete from claims table (parent table)
+                $conn->exec("DELETE FROM claims");
+                
+                // Commit transaction
+                $conn->commit();
+                
+                // Set success message
+                $successMessage = 'All claims have been successfully deleted from the system.';
+            } catch (Exception $e) {
+                // Rollback transaction on error
+                $conn->rollBack();
+                
+                // Set error message
+                $errorMessage = 'Error clearing claims: ' . $e->getMessage();
+            }
+            
+            $activeTab = 'system';
+        }
+        
         // Delete backup
         if (isset($_POST['delete_backup']) && !empty($_POST['backup_file'])) {
             $backupFile = basename($_POST['backup_file']);
@@ -448,21 +493,13 @@ $templateContent = $templateType === 'otp' ? $otpTemplate : $claimTemplate;
 
 <!-- Tabs -->
 <ul class="nav nav-tabs mb-4">
+    <?php foreach ($tabs as $tabId => $tabName): ?>
     <li class="nav-item">
-        <a class="nav-link <?php echo $activeTab === 'email' ? 'active' : ''; ?>" href="?tab=email">Email Notifications</a>
+        <a class="nav-link <?php echo $activeTab === $tabId ? 'active' : ''; ?>" href="?tab=<?php echo $tabId; ?>">
+            <?php echo $tabName; ?>
+        </a>
     </li>
-    <li class="nav-item">
-        <a class="nav-link <?php echo $activeTab === 'email_config' ? 'active' : ''; ?>" href="?tab=email_config">Email Configuration</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link <?php echo $activeTab === 'templates' ? 'active' : ''; ?>" href="?tab=templates">Email Templates</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link <?php echo $activeTab === 'debug' ? 'active' : ''; ?>" href="?tab=debug">Email Debugging</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link <?php echo $activeTab === 'backup' ? 'active' : ''; ?>" href="?tab=backup">Database Backup</a>
-    </li>
+    <?php endforeach; ?>
 </ul>
 
 <!-- Email Notification Settings Tab -->
@@ -869,6 +906,53 @@ $templateContent = $templateType === 'otp' ? $otpTemplate : $claimTemplate;
                         </div>
                     <?php endif; ?>
                 <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Operations Tab -->
+<?php elseif ($activeTab === 'system'): ?>
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">System Operations</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-4">This section contains operations that affect system data. Please use these options with caution.</p>
+                
+                <!-- Clear Claims Section -->
+                <div class="border rounded p-4 mb-4 bg-light">
+                    <h5 class="text-danger mb-3"><i class="fas fa-exclamation-triangle me-2"></i>Clear All Claims</h5>
+                    
+                    <p>This operation will permanently delete <strong>ALL</strong> warranty claims from the system, including:</p>
+                    
+                    <ul class="mb-4">
+                        <li>All claim records</li>
+                        <li>All claim items</li>
+                        <li>All claim notes and history</li>
+                        <li>All uploaded media files</li>
+                    </ul>
+                    
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        <strong>Warning:</strong> This action cannot be undone. It is recommended to create a database backup before proceeding.
+                    </div>
+                    
+                    <form method="POST" action="settings.php?tab=system" class="mt-4">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="confirm_clear_claims" name="confirm_clear_claims" required>
+                            <label class="form-check-label" for="confirm_clear_claims">
+                                I understand that this will permanently delete all claims and cannot be undone.
+                            </label>
+                        </div>
+                        
+                        <button type="submit" name="clear_all_claims" class="btn btn-danger" onclick="return confirm('Are you absolutely sure you want to delete ALL claims? This action CANNOT be undone!')">
+                            <i class="fas fa-trash-alt me-2"></i>Clear All Claims
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>

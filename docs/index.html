@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warranty Management System - Documentation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap">
+    <style>
+        :root {
+            --primary-color: #5b87a4;
+            --secondary-color: #2e4154;
+            --accent-color: #d35e5e;
+            --light-color: #f5f7f9;
+            --dark-color: #2c3e50;
+            --code-bg: #f8f9fa;
+            --border-color: #e9ecef;
+            --method-color: #e3f2fd;
+            --property-color: #fff3cd;
+            --namespace-color: #d1e7dd;
+        }
+        
+        body {
+            font-family: 'Source Sans Pro', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: var(--light-color);
+        }
+        
+        .navbar {
+            background-color: var(--secondary-color);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: white !important;
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 56px;
+            left: 0;
+            width: 280px;
+            height: calc(100vh - 56px);
+            background-color: white;
+            overflow-y: auto;
+            transition: all 0.3s;
+            z-index: 1000;
+            padding: 0;
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+        }
+        
+        .main-content {
+            margin-left: 280px;
+            padding: 20px 30px;
+            background-color: white;
+            min-height: calc(100vh - 56px);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .nav-item {
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .nav-link {
+            color: var(--dark-color);
+            padding: 0.8rem 1rem;
+            font-size: 0.95rem;
+        }
+        
+        .nav-link:hover {
+            background-color: var(--light-color);
+        }
+        
+        .nav-link.active {
+            background-color: var(--light-color);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        .nav-link .badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            margin-left: 5px;
+        }
+        
+        .section-title {
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        .subsection-title {
+            color: var(--secondary-color);
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        code {
+            background-color: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.9em;
+            color: var(--accent-color);
+        }
+        
+        pre {
+            background-color: var(--code-bg);
+            padding: 1rem;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            overflow-x: auto;
+        }
+        
+        .method-container, .property-container {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .method-container {
+            background-color: var(--method-color);
+        }
+        
+        .property-container {
+            background-color: var(--property-color);
+        }
+        
+        .method-name, .property-name {
+            font-weight: 600;
+            color: var(--secondary-color);
+        }
+        
+        .method-signature {
+            font-family: monospace;
+            padding: 0.5rem;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 3px;
+            margin: 0.5rem 0;
+            overflow-x: auto;
+        }
+        
+        .param-table {
+            width: 100%;
+            margin: 1rem 0;
+        }
+        
+        .param-table th {
+            background-color: rgba(0, 0, 0, 0.05);
+            text-align: left;
+            padding: 0.5rem;
+        }
+        
+        .param-table td {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .param-name {
+            font-family: monospace;
+            font-weight: 600;
+        }
+        
+        .param-type {
+            color: var(--primary-color);
+            font-family: monospace;
+        }
+        
+        .return-value {
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 3px;
+        }
+        
+        .namespace-badge {
+            display: inline-block;
+            background-color: var(--namespace-color);
+            padding: 0.3rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+        }
+        
+        .description {
+            margin-bottom: 1rem;
+        }
+        
+        .breadcrumb {
+            background-color: transparent;
+            padding: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        .breadcrumb-item a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        
+        .breadcrumb-item.active {
+            color: var(--dark-color);
+        }
+        
+        .toc {
+            background-color: var(--light-color);
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 2rem;
+        }
+        
+        .toc-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .toc-list {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        
+        .toc-list li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .toc-list a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        
+        .search-container {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .search-container input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="index.html">
+                Warranty Management System
+            </a>
+        </div>
+    </nav>
+
+    <div class="sidebar">
+        <div class="search-container">
+            <input type="text" placeholder="Search documentation..." id="search-input">
+        </div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" href="index.html">
+                    <i class="fas fa-home me-2"></i> Overview
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="modules.html">
+                    <i class="fas fa-cubes me-2"></i> Modules
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="admin_module.html">
+                    <i class="fas fa-user-shield me-2"></i> Admin Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="claims_module.html">
+                    <i class="fas fa-file-alt me-2"></i> Claims Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="reports_module.html">
+                    <i class="fas fa-chart-bar me-2"></i> Reports Module
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="warranty_rules.html">
+                    <i class="fas fa-gavel me-2"></i> Warranty Rules
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="database_schema.html">
+                    <i class="fas fa-database me-2"></i> Database Schema
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="api_reference.html">
+                    <i class="fas fa-code me-2"></i> API Reference
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <div class="main-content">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="index.html">Home</a></li>
+                <li class="breadcrumb-item active">Overview</li>
+            </ol>
+        </nav>
+
+        <h1 class="section-title">Warranty Management System</h1>
+        
+        <div class="namespace-badge">
+            <i class="fas fa-folder me-1"></i> WarrantySystem
+        </div>
+        
+        <div class="description">
+            <p>The Warranty Management System is a comprehensive web-based application designed to streamline the process of handling warranty claims. It provides tools for claim submission, tracking, reporting, and analysis, helping organizations efficiently manage their warranty service operations.</p>
+        </div>
+        
+        <div class="toc">
+            <div class="toc-title">Table of Contents</div>
+            <ul class="toc-list">
+                <li><a href="#introduction">Introduction</a></li>
+                <li><a href="#system-requirements">System Requirements</a></li>
+                <li><a href="#architecture">System Architecture</a></li>
+                <li><a href="#key-features">Key Features</a></li>
+                <li><a href="#modules">Modules Overview</a></li>
+            </ul>
+        </div>
+        
+        <h2 class="subsection-title" id="introduction">Introduction</h2>
+        <p>The Warranty Management System is designed to help businesses efficiently handle warranty claims for their products. The system provides a centralized platform for customers to submit warranty claims, for staff to process these claims, and for administrators to track and analyze claim data.</p>
+        
+        <h2 class="subsection-title" id="system-requirements">System Requirements</h2>
+        <ul>
+            <li>Web server with PHP 7.4 or higher</li>
+            <li>MySQL 5.7 or higher</li>
+            <li>Modern web browser (Chrome, Firefox, Safari, Edge)</li>
+            <li>JavaScript enabled</li>
+        </ul>
+        
+        <h2 class="subsection-title" id="architecture">System Architecture</h2>
+        <p>The Warranty Management System follows a modular architecture with the following components:</p>
+        
+        <div class="method-container">
+            <div class="method-name">Core Components</div>
+            <div class="description">
+                <ul>
+                    <li><strong>Config</strong>: Database connection and system settings</li>
+                    <li><strong>Includes</strong>: Helper functions and utilities</li>
+                    <li><strong>Models</strong>: Data access and business logic</li>
+                    <li><strong>Controllers</strong>: Request handling and processing</li>
+                    <li><strong>Views</strong>: User interface templates</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h2 class="subsection-title" id="key-features">Key Features</h2>
+        <ul>
+            <li>Centralized claim management</li>
+            <li>Automated workflow for claim processing</li>
+            <li>Comprehensive reporting and analytics</li>
+            <li>File attachment support for claim documentation</li>
+            <li>User role-based access control</li>
+            <li>Email notifications</li>
+            <li>SLA (Service Level Agreement) tracking</li>
+        </ul>
+        
+        <h2 class="subsection-title" id="modules">Modules Overview</h2>
+        
+        <div class="method-container">
+            <div class="method-name">Admin Module</div>
+            <div class="description">
+                <p>The Admin Module provides administrative functions for managing the system, including user management, system settings, and dashboard overview.</p>
+                <p><a href="admin_module.html">View Admin Module Documentation</a></p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">Claims Module</div>
+            <div class="description">
+                <p>The Claims Module handles the core functionality of warranty claim submission, processing, and tracking.</p>
+                <p><a href="claims_module.html">View Claims Module Documentation</a></p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">Reports Module</div>
+            <div class="description">
+                <p>The Reports Module provides analytical reports and data visualization for warranty claims data.</p>
+                <p><a href="reports_module.html">View Reports Module Documentation</a></p>
+            </div>
+        </div>
+        
+        <div class="method-container">
+            <div class="method-name">Warranty Rules Module</div>
+            <div class="description">
+                <p>The Warranty Rules Module allows administrators to define and manage warranty policies for different product types.</p>
+                <p><a href="warranty_rules.html">View Warranty Rules Documentation</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Simple search functionality
+            $("#search-input").on("keyup", function() {
+                var value = $(this).val().toLowerCase();
+                $(".nav-link").filter(function() {
+                    $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+                });
+            });
+        });
+    </script>
+</body>
+</html>
